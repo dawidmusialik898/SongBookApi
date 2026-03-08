@@ -1,6 +1,0 @@
-@SongBookService_HostAddress = http://localhost:5252
-
-GET {{SongBookService_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

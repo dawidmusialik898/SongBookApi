@@ -12,8 +12,5 @@ public class Song
     public Part[]? Parts { get; set; }
     public Guid[]? Order { get; set; }
 
-    public Song()
-    {
-        Id = Guid.NewGuid();
-    }
+    public Song() => Id = Guid.NewGuid();
 }

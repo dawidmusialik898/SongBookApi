@@ -1,13 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+﻿using SongBookApi.Domain.Dto;
 using System.Xml;
 
-using SongBookApi.Domain.Dto;
-using SongBookApi.Domain.Interfaces;
-
-namespace SongBookApi.Infrastructure.Dataseeders;
+namespace SongBookApi.Infrastructure;
 
 public class SneSongsFromXmlSeeder : ISongDbSeeder
 {
@@ -21,17 +15,17 @@ public class SneSongsFromXmlSeeder : ISongDbSeeder
 
         XmlDocument doc = new();
         doc.Load(_filepath);
-        var xmlSongs = doc.DocumentElement.SelectNodes(@"//SlideGroup");
+        XmlNodeList? xmlSongs = doc.DocumentElement.SelectNodes(@"//SlideGroup");
         var songs = new Song[xmlSongs.Count];
-        for (var i = 0; i < xmlSongs.Count; i++)
+        for (int i = 0; i < xmlSongs.Count; i++)
         {
             songs[i] = GetSong(xmlSongs[i]);
         }
 
         return songs;
     }
-    private static Song GetSong(XmlNode xmlSong) =>
-        new()
+    private static Song GetSong(XmlNode xmlSong)
+        => new()
         {
             Author = null,
             Key = "",
@@ -41,11 +35,15 @@ public class SneSongsFromXmlSeeder : ISongDbSeeder
             Parts = GetParts(xmlSong.SelectNodes(@".//Slide")),
         };
 
-    private static Part[] GetParts(XmlNodeList parts) =>
-        parts.Cast<XmlNode>().Select(p =>
+    private static Part[] GetParts(XmlNodeList parts)
+        => parts.Cast<XmlNode>().Select(p =>
             new Part()
             {
                 Name = p.SelectSingleNode(@".//Part")?.InnerText,
                 Text = p.SelectSingleNode(@".//Text")?.InnerText
             }).ToArray();
+}
+
+public interface ISongDbSeeder
+{
 }

@@ -6,8 +6,5 @@ public class Part
     public string? Name { get; set; } //verse, chorus, intro, outro etc.
     public string? Text { get; set; }
 
-    public Part()
-    {
-        Id = Guid.NewGuid();
-    }
+    public Part() => Id = Guid.NewGuid();
 }

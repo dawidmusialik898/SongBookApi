@@ -10,7 +10,5 @@ public class Song
     public string? Key { get; set; }
     public string? Tempo { get; set; }
     public Part[]? Parts { get; set; }
-    public Guid[]? Order { get; set; }
-
     public Song() => Id = Guid.NewGuid();
 }

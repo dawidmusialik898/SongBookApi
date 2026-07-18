@@ -9,24 +9,29 @@ public static class SongEndpoints
     public static void MapSongEndpoints(this WebApplication app)
     {
         _ = app.MapGet("/songs", GetSongs)
-            .WithName("GetSongs");
+            .WithName("GetSongs")
+            .RequireCors("AllowAllLocalhost");
 
         _ = app.MapGet("/songs/{id}", GetSongById)
-            .WithName("GetSongById");
+            .WithName("GetSongById")
+            .RequireCors("AllowAllLocalhost");
 
         _ = app.MapPost("/songs", CreateSong)
             .Accepts<Song>("application/json")
             .Produces<Song>(201)
-            .WithName("CreateSong");
+            .WithName("CreateSong")
+            .RequireCors("AllowAllLocalhost");
 
         _ = app.MapPut("/songs/{id}", UpdateSong)
             .Accepts<Song>("application/json")
             .Produces(204)
-            .WithName("UpdateSong");
+            .WithName("UpdateSong")
+            .RequireCors("AllowAllLocalhost");
 
         _ = app.MapDelete("/songs/{id}", DeleteSong)
             .Produces(204)
-            .WithName("DeleteSong");
+            .WithName("DeleteSong")
+            .RequireCors("AllowAllLocalhost");
     }
 
     private static async Task<IResult> GetSongs(

@@ -10,28 +10,28 @@ public static class SongEndpoints
     {
         _ = app.MapGet("/songs", GetSongs)
             .WithName("GetSongs")
-            .RequireCors("AllowAllLocalhost");
+            .RequireCors(ServiceConstants.SongBookClientPolicyName);
 
         _ = app.MapGet("/songs/{id}", GetSongById)
             .WithName("GetSongById")
-            .RequireCors("AllowAllLocalhost");
+            .RequireCors(ServiceConstants.SongBookClientPolicyName);
 
         _ = app.MapPost("/songs", CreateSong)
             .Accepts<Song>("application/json")
             .Produces<Song>(201)
             .WithName("CreateSong")
-            .RequireCors("AllowAllLocalhost");
+            .RequireCors(ServiceConstants.SongBookClientPolicyName);
 
         _ = app.MapPut("/songs/{id}", UpdateSong)
             .Accepts<Song>("application/json")
             .Produces(204)
             .WithName("UpdateSong")
-            .RequireCors("AllowAllLocalhost");
+            .RequireCors(ServiceConstants.SongBookClientPolicyName);
 
         _ = app.MapDelete("/songs/{id}", DeleteSong)
             .Produces(204)
             .WithName("DeleteSong")
-            .RequireCors("AllowAllLocalhost");
+            .RequireCors(ServiceConstants.SongBookClientPolicyName);
     }
 
     private static async Task<IResult> GetSongs(

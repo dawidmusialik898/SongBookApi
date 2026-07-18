@@ -1,3 +1,4 @@
+using SongBookApi.Service;
 using SongBookApi.Service.Endpoints;
 using SongBookApi.Service.Extensions;
 
@@ -8,7 +9,7 @@ builder.Services.AddApplicationServices();
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAllLocalhost", policy =>
+    options.AddPolicy(ServiceConstants.SongBookClientPolicyName, policy =>
     {
         policy.WithOrigins(
             "http://localhost:3000",
@@ -23,7 +24,7 @@ WebApplication app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     _ = app.MapOpenApi();
-    app.UseCors("AllowAllLocalhost");
+    app.UseCors(ServiceConstants.SongBookClientPolicyName);
 }
 
 app.UseHttpsRedirection();

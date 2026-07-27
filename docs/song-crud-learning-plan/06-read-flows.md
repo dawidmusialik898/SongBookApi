@@ -13,13 +13,160 @@ The user should see clear loading, empty, populated, selected, and error
 states. Do this before creating the editor so the UI already proves that it can
 identify the correct song.
 
+## AI implementation specification
+
+### Status and prerequisites
+
+This stage is pending. Points 04 and 05 must be complete. The page must already
+have the static IDs defined in point 05.
+
+### Files in scope
+
+Modify:
+
+```text
+SongBookClient/src/main.js
+SongBookClient/styles/app.css
+```
+
+Change `index.html` only when an accessibility label or missing static
+container is required; do not restructure the shell.
+
+### Required functions in `main.js`
+
+Organize the read flow around these named functions:
+
+```text
+initialize()
+loadSongs()
+selectSong(id)
+clearSelection()
+renderSongList()
+renderSongDetails()
+renderCollectionState()
+renderNotice()
+```
+
+Small helpers such as `formatSongLabel` or `displayValue` are allowed. Do not
+create a generic rendering framework.
+
+### Collection behavior
+
+`loadSongs()` must:
+
+1. Return immediately when `state.isLoadingSongs` is already true.
+2. Set `isLoadingSongs`, render the pending state, and disable Refresh.
+3. Call `getSongs()`.
+4. Replace `state.songs` only after a successful response.
+5. Keep the previous list after a failure and mark it as potentially stale.
+6. If the selected ID no longer exists in a successful collection response,
+   clear selection and details.
+7. In `finally`, clear the loading flag and restore controls.
+
+Initial loading and the Refresh button must call this same function.
+
+### List rendering contract
+
+For each song, render one `<li>` containing:
+
+- A text summary: optional number, title fallback `"Untitled song"`, and
+  author when present.
+- One `View` button with `data-song-id`.
+- A selected class when its ID equals `state.selectedSongId`.
+- An accessible current indicator such as `aria-current="true"` on the View
+  button when selected.
+
+Do not render Delete yet. Do not make the entire list item clickable around a
+nested button.
+
+Use event delegation on `song-list` so one listener handles View buttons. Read
+the ID only from `data-song-id`, never from displayed text.
+
+### Individual read behavior
+
+`selectSong(id)` must:
+
+1. Store `selectedSongId = id` immediately and rerender selected list state.
+2. Set `isLoadingSong` and show `"Loading song details..."`.
+3. Capture the requested ID locally.
+4. Await `getSong(id)`.
+5. Before applying the result, confirm
+   `state.selectedSongId === requestedId`.
+6. Store the result in `state.selectedSong` and render its details.
+7. On `404`, clear selection, explain that the record no longer exists, and
+   refresh the collection once.
+8. On other failure, retain the selected ID, clear stale detail data, and show
+   a retryable error.
+9. Clear `isLoadingSong` in `finally` only when the request still belongs to
+   the current selection.
+
+The ID comparison is the selected race-condition solution. Do not add
+`AbortController` in this stage.
+
+### Detail rendering contract
+
+Render the following labels in `song-details`:
+
+```text
+Title
+Author
+Original title
+Number
+Key
+Tempo
+Parts
+```
+
+Use `"Not provided"` for null, undefined, or whitespace-only scalar values.
+Render parts in array order. Each part shows its name (fallback `"Unnamed
+part"`) and text while preserving line breaks with CSS such as
+`white-space: pre-wrap`.
+
+Do not display GUIDs in the normal UI. Do not render an Edit button until point
+07.
+
+### Acceptance criteria
+
+- [ ] Initial and manual collection loads use one function.
+- [ ] Empty, loading, populated, stale-error, and selected states are visible.
+- [ ] Every song can be loaded through `GET /songs/{id}`.
+- [ ] Rapidly selecting A then B cannot leave A in B's detail panel.
+- [ ] A detail `404` clears stale selection and refreshes the collection.
+- [ ] Null fields never appear as the literal text `"null"`.
+- [ ] Parts render in API array order and preserve lyric line breaks.
+- [ ] No user-provided content is assigned to `innerHTML`.
+
+### Validation
+
+```sh
+node --check src/main.js
+rg "innerHTML" src index.html
+```
+
+Browser scenarios:
+
+1. Load an empty collection.
+2. Create sample data through the temporary/API mechanism if needed.
+3. View every song.
+4. Rapidly alternate between two View buttons.
+5. Select a song, delete it through an external curl request, then select or
+   refresh it again to exercise `404`.
+6. Stop the API and verify the previous list remains with an error notice.
+
+### Non-goals
+
+- Do not create or edit songs.
+- Do not add delete controls.
+- Do not add filtering, sorting, routing, pagination, or caching.
+- Do not use list data as a substitute for `GET /songs/{id}`.
+
 ## Collection flow
 
 Use this sequence for initial page load and the Refresh button:
 
 ```text
 start refresh
-  -> set isLoadingList to true
+  -> set isLoadingSongs to true
   -> render loading state and disable duplicate refresh
   -> await getSongs()
   -> store returned array in state.songs
@@ -38,8 +185,7 @@ is friendlier, as long as the notice clearly says it may be stale.
 Each list row should provide:
 
 - Human-readable song identity, such as number, title, and author.
-- A View or Edit action.
-- A Delete action, which is wired later in document 08.
+- A View action. Edit is added in document 07.
 - A visible selected state when its ID equals `state.selectedSongId`.
 
 Make the whole row a button only if there are no nested buttons. If a row also
@@ -104,8 +250,8 @@ Plan for these states explicitly:
 | `GET /songs/{id}` returns `404` | Clear selection, refresh collection, and explain that the song was removed. |
 | Network or `500` error | A clear failure notice and a way to retry. |
 
-Use an empty-state button that invokes the same create action as the toolbar
-button. This gives a new user an obvious next step.
+Show empty-state guidance now. Document 07 adds a button that invokes the same
+create action as the toolbar button.
 
 ## Detail display before editing
 
@@ -118,7 +264,7 @@ Original title
 Number
 Key
 Tempo
-Parts and their order
+Parts in array order
 ```
 
 This helps you compare the loaded API response with the form values while
@@ -130,7 +276,7 @@ For null or blank values, display a consistent placeholder such as
 
 ## Implementation steps
 
-1. Make the initial `refreshSongs` use the new `getSongs` adapter.
+1. Make the initial `loadSongs` use the new `getSongs` adapter.
 2. Replace the current list code with DOM-based list rows and stable IDs or
    `data-song-id` attributes.
 3. Add the Refresh button behavior.
@@ -183,4 +329,3 @@ Start with in-memory selection first.
 You are ready to add writing behavior when a user can load a list, choose any
 song, see the correct current detail, refresh the collection, and recover
 cleanly if a selected song was deleted elsewhere.
-

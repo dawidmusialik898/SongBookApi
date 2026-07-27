@@ -6,6 +6,208 @@ Use one form for both `POST /songs` and `PUT /songs/{id}`. The form should
 create plain JavaScript payloads from user input, validate friendly
 client-side rules, and never lose the selected song identity.
 
+## AI implementation specification
+
+### Status and prerequisites
+
+This stage is pending. Points 02, 04, 05, and 06 must be complete. In
+particular, route-authoritative updates and settable `Part.Id` are blocking
+requirements.
+
+### Files in scope
+
+Add:
+
+```text
+SongBookClient/src/songForm.js
+```
+
+Modify:
+
+```text
+SongBookClient/index.html
+SongBookClient/src/main.js
+SongBookClient/styles/app.css
+```
+
+Do not change the API in this stage unless validation proves point 02 was not
+actually completed.
+
+### `songForm.js` public contract
+
+Export exactly these helpers:
+
+```text
+createPartDraft(part?)
+populateSongForm(form, song?)
+buildSongPayload(form, draftParts)
+renderPartsEditor(container, draftParts)
+```
+
+Responsibilities:
+
+- `createPartDraft(part?)` returns:
+
+  ```js
+  {
+    clientKey: crypto.randomUUID(),
+    id: part?.id ?? null,
+    name: part?.name ?? "",
+    text: part?.text ?? ""
+  }
+  ```
+
+  `clientKey` is browser-only and must never be serialized.
+
+- `populateSongForm` fills only scalar controls and uses empty strings for null
+  API values.
+- `buildSongPayload` trims scalar/part strings, converts blank strings to
+  `null`, preserves existing part IDs, omits IDs for new parts, and returns no
+  song `id` and no `order`.
+  For a new object, the `id` key must be absent, not `"id": null`, because the
+  API binds it to a non-nullable `Guid`. Strip both `clientKey` and null IDs
+  rather than serializing draft objects directly.
+- `renderPartsEditor` creates DOM nodes with `textContent`, not HTML strings.
+  Each fieldset must expose its `clientKey` through `data-part-key`.
+
+Use these `data-action` values for part buttons:
+
+```text
+move-part-up
+move-part-down
+remove-part
+```
+
+Use these `data-part-field` values:
+
+```text
+name
+text
+```
+
+Move buttons must be disabled at the first/last positions respectively.
+
+### State extension
+
+Use the existing `state.draftParts` array. It is the only source of truth for
+the editor's parts. DOM inputs update that array through delegated `input`
+events. Add/move/remove operations update the array, then rerender the parts
+editor.
+
+Existing part IDs are preserved in draft state. New drafts have `id: null`.
+Array position is the saved part order.
+
+### Create mode
+
+When `new-song-button` is selected:
+
+1. Set `editorMode = "create"`.
+2. Clear `selectedSongId` and `selectedSong`.
+3. Reset the form and `draftParts`.
+4. Set the heading to `"Create song"` and submit label to `"Create song"`.
+5. Reveal the form and hide read-only details.
+6. Focus `song-title`.
+
+Reveal and enable `new-song-button` as part of this stage.
+
+### Edit mode
+
+Add an `Edit song` button to the read-only detail rendering. When selected:
+
+1. Require a loaded `state.selectedSong`.
+2. Set `editorMode = "edit"`.
+3. Populate scalar form values from that song.
+4. Map its parts through `createPartDraft`.
+5. Set heading to `"Edit song"` and submit label to `"Save changes"`.
+6. Reveal the form and keep `selectedSongId` as the authoritative song ID.
+
+Do not read identity from a hidden input.
+
+### Form submission
+
+The form submit handler must:
+
+1. Call `event.preventDefault()`.
+2. Ignore duplicate submits while `state.isSaving` is true.
+3. Run browser constraint validation with `checkValidity()` /
+   `reportValidity()`.
+4. Build one payload through `buildSongPayload`.
+5. In create mode, call `createSong(payload)`.
+6. In edit mode, call `updateSong(state.selectedSongId, payload)`.
+7. Disable all form mutation controls and show the action-specific saving
+   message while pending.
+8. On create success, reload the collection and select the ID returned in the
+   `201` response.
+9. On update success, reload the collection and refetch the selected song
+   because `204` contains no body.
+10. Preserve all typed values after failure.
+11. Restore controls in `finally`.
+
+The API currently has no required-field or length validation. Do not mark
+`title` required and do not invent `maxlength` values. Blank strings map to
+`null`.
+
+### Cancel behavior
+
+- In create mode, Cancel clears the draft, hides the form, and returns to the
+  idle/details view.
+- In edit mode, Cancel discards the draft and restores the last successfully
+  loaded read-only details.
+- Do not prompt about unsaved changes in this first implementation.
+
+### Part editor behavior
+
+- `Add part` appends one empty draft and focuses its name input.
+- Input events update the matching draft by `clientKey`.
+- Move up/down changes only array position.
+- Remove deletes only the matching draft.
+- Existing IDs remain attached to their drafts through reorder operations.
+- New part IDs are learned only after the successful save/refetch.
+- Do not support repeated references to the same part; every array entry is one
+  part.
+
+### Acceptance criteria
+
+- [ ] One form supports both create and edit modes.
+- [ ] Create bodies contain no song or part IDs for new objects.
+- [ ] Update URLs use `selectedSongId`; bodies contain no song ID.
+- [ ] Existing part IDs are preserved and new part IDs are server-generated.
+- [ ] Parts save in visible array order.
+- [ ] Blank scalar/part values serialize as `null`.
+- [ ] `204` update success triggers a refetch rather than JSON parsing.
+- [ ] Duplicate Save clicks issue one request.
+- [ ] Failed saves preserve typed data and part ordering.
+- [ ] Cancel never sends a request.
+
+### Validation
+
+```sh
+node --check src/songForm.js
+node --check src/main.js
+node --check src/songsApi.js
+rg 'innerHTML' src index.html
+rg '"order"[[:space:]]*:' src index.html
+```
+
+Browser acceptance:
+
+1. Create a scalar-only song.
+2. Create a song with two parts.
+3. Edit scalar fields.
+4. Edit an existing part and confirm its ID remains stable via Network/API
+   inspection.
+5. Add, reorder, and remove parts; refetch and confirm array order.
+6. Cancel both create and edit.
+7. Stop the API during save and confirm all input remains.
+
+### Non-goals
+
+- Do not add unsaved-change prompts, autosave, drag-and-drop, rich text, or
+  repeated part references.
+- Do not generate persistent song or part GUIDs in the browser.
+- Do not add validation rules absent from the API contract.
+- Do not split create and edit into separate forms.
+
 ## Start with scalar fields
 
 Build the first working form with:
@@ -80,7 +282,7 @@ string. Convert deliberately:
 2. Trim surrounding whitespace.
 3. Decide whether blank optional fields become `null` or an empty string.
 4. Build a new payload object with exact API property names.
-5. Attach parts and order from their own editor state.
+5. Attach parts from their own editor state.
 
 Use one documented blank-value policy. `null` often communicates "not
 provided" more clearly, while `""` is simpler if the API treats the two values
@@ -96,28 +298,18 @@ The server remains the authority, but the form can prevent obvious mistakes.
 
 Suggested initial rules:
 
-- Title is required for a useful song, if you decide it is a product rule.
 - Trim whitespace before checking required fields.
 - Show a field-specific message near the problem.
 - Move focus to the first invalid field after submit.
 - Keep valid user input when validation fails.
 
-If the API intentionally permits a null title, either align the API with the
-UI rule or explain why the UI is stricter. Do not create inconsistent rules by
-accident.
+The current API intentionally permits a null title, so the client must not make
+title required in this stage. Display `"Untitled song"` when needed.
 
-Use built-in HTML validation first:
+Use built-in HTML validation when the API later defines matching constraints.
+The current API does not define required fields or maximum lengths.
 
-```text
-required
-maxlength
-minlength
-```
-
-Then add JavaScript only for rules HTML cannot express, such as relationships
-between parts and order.
-
-## Parts and order
+## Parts and array order
 
 Only implement this section after document 02's API contract checkpoint.
 
@@ -137,29 +329,17 @@ Add an "Add part" button outside the list. Use buttons rather than
 drag-and-drop at first; buttons work with keyboard input and make ordering
 logic much easier to learn.
 
-For an existing song, retain each part's stable ID in editor state or a
-`data-part-id` attribute. For a new part, create the ID according to the API
-contract chosen in document 02.
+For an existing song, retain each part's stable ID in editor state. For a new
+part, omit the ID and let the server create it according to document 02.
 
 After every add, remove, or move operation, derive the payload:
 
 ```text
 parts: [part objects in editor state]
-order: [part IDs in display order]
 ```
 
-Do not let the visual order and the `order` array evolve independently. One
-should always be derived from the other.
-
-### Repeated parts
-
-If the product needs a chorus to appear multiple times, distinguish:
-
-- A library of unique parts.
-- An `order` sequence that can reference the same part ID more than once.
-
-Do not assume that moving part rows alone supports repeated references. This
-is a product decision that belongs in the API contract.
+The array itself is the order. The current contract does not support repeated
+references to one part.
 
 ## Save-state behavior
 
@@ -188,7 +368,7 @@ is harder to test and can be annoying. Start with an in-page Cancel action.
 
 ## Implementation steps
 
-1. Create the scalar form in `index.html`.
+1. Wire the scalar form created in document 05.
 2. Add a function that starts create mode and resets form controls.
 3. Add a function that fills form controls from a fetched song.
 4. On form submit, call `event.preventDefault()`.
@@ -236,4 +416,3 @@ Move-up and move-down buttons are the best first implementation.
 You are ready for deletion when a user can create a song, find it in the list,
 open it again, change a field, save it, refresh the page data, and see the
 changed value returned by the API.
-

@@ -8,6 +8,147 @@ structure that gives every later JavaScript feature a stable place to render.
 Build the shell before filling it with network data. A clear HTML structure
 makes JavaScript simpler because each renderer has an obvious target.
 
+## AI implementation specification
+
+### Status and prerequisites
+
+This stage is pending. Points 03 and 04 must pass. The result must remain a
+plain static site served by lite-server.
+
+### Files in scope
+
+Modify:
+
+```text
+SongBookClient/index.html
+SongBookClient/src/main.js
+SongBookClient/styles/buttons.css
+```
+
+Add:
+
+```text
+SongBookClient/styles/app.css
+```
+
+Delete only after references are removed:
+
+```text
+SongBookClient/src/factory.js
+SongBookClient/src/factories.js
+SongBookClient/src/modules/songList.html
+```
+
+### Required HTML contract
+
+`index.html` must contain these stable elements:
+
+| ID | Element/purpose |
+| --- | --- |
+| `new-song-button` | Hidden toolbar button, enabled in point 07 |
+| `refresh-songs-button` | Collection refresh button |
+| `app-status` | Persistent `role="status"` live region |
+| `song-list-state` | Loading/empty-list text |
+| `song-list` | `<ul>` populated by JavaScript |
+| `song-details` | Read-only selected-song region |
+| `song-form` | Hidden form wired in point 07 |
+| `song-form-heading` | Create/edit form heading |
+| `song-title` | Input with `name="title"` |
+| `song-author` | Input with `name="author"` |
+| `song-original-title` | Input with `name="originalTitle"` |
+| `song-number` | Input with `name="number"` |
+| `song-key` | Input with `name="key"` |
+| `song-tempo` | Input with `name="tempo"` |
+| `parts-editor` | Container for part fieldsets |
+| `add-part-button` | Add-part control inside the hidden form |
+| `cancel-song-button` | Non-submit cancel control |
+| `save-song-button` | Form submit control |
+
+Use `hidden` on `new-song-button` and `song-form` until point 07 wires them.
+Hidden controls are preferable to visible controls that do nothing.
+
+The structural outline must be:
+
+```text
+header
+  h1
+  toolbar
+status
+main.app-layout
+  section: song collection
+  section: details/editor workspace
+```
+
+Keep the module script as:
+
+```html
+<script type="module" src="src/main.js"></script>
+```
+
+### Required JavaScript changes
+
+1. Remove `btnFactory` and all dynamic top-level button creation.
+2. Cache the static DOM elements once in an `elements` object.
+3. Attach the refresh listener to `refresh-songs-button`.
+4. Keep initial collection loading through `initialize()`.
+5. Render the current basic song list into `song-list`; point 06 replaces it
+   with interactive rows.
+6. Show collection loading/empty text in `song-list-state`.
+7. Route request failures to `state.notice` and render them in `app-status`.
+8. Keep the create toolbar button and form hidden rather than partially
+   implementing create behavior.
+9. After imports are gone, delete the three unused experiment files.
+
+### Required CSS behavior
+
+`app.css` must provide:
+
+- A readable page width and spacing scale.
+- A single-column layout by default.
+- A two-column list/workspace layout at a reasonable wider breakpoint.
+- Form control sizing that does not overflow narrow screens.
+- Visible `.notice--error`, `.notice--success`, and selected-row hooks for
+  later stages.
+
+`buttons.css` should contain reusable button classes rather than one
+688-pixel-wide `.divbuttons` rule. Define neutral, primary, and destructive
+variants, even if the destructive variant is not used until point 08.
+
+Do not attempt a final visual design. Prioritize semantic structure and
+readability.
+
+### Acceptance criteria
+
+- [ ] The page has one visible `<h1>` and one `<main>`.
+- [ ] Every form control has an associated `<label>`.
+- [ ] Non-submit form buttons use `type="button"`.
+- [ ] All required IDs exist exactly once.
+- [ ] Refresh and initial list loading still work.
+- [ ] Request failures appear in the status region.
+- [ ] No visible control silently does nothing.
+- [ ] No script imports the deleted factory files.
+- [ ] The layout works without horizontal scrolling at 320 CSS pixels.
+- [ ] User data is rendered with `textContent`, not `innerHTML`.
+
+### Validation
+
+```sh
+node --check src/main.js
+node --check src/songsApi.js
+rg "factory|factories|songList\\.html|innerHTML" index.html src
+```
+
+The search must find no obsolete import/reference and no user-data
+`innerHTML` rendering. Inspect the page at narrow and wide browser widths and
+tab through all visible controls.
+
+### Non-goals
+
+- Do not implement individual song loading, edit/save, parts behavior, or
+  deletion.
+- Do not add a modal, router, template library, or CSS framework.
+- Do not enable the New song control until point 07.
+
 ## Recommended page layout
 
 Use one `<main>` element with distinct regions:
@@ -48,9 +189,9 @@ or flexbox to place them side by side.
 Give JavaScript-owned containers stable IDs, for example:
 
 ```text
-app-notice
+app-status
 song-list
-empty-song-list
+song-list-state
 song-details
 song-form
 ```
@@ -162,4 +303,3 @@ Use different HTML pages or hash routes.
 You are ready to add rendering when the static page is understandable without
 JavaScript: it has a title, appropriately labelled regions, buttons with clear
 purposes, and a form with labels that can be navigated by keyboard.
-

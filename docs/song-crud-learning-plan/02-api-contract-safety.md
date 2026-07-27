@@ -2,187 +2,267 @@
 
 ## Goal
 
-Understand and resolve the backend behaviors that would otherwise make a
-frontend appear to save data while silently changing or losing song identity.
+Make the existing API contract safe enough for a browser editor before the
+remaining client CRUD flows are implemented.
 
-This stage is mostly API work, but it protects every later client feature.
+This is an API-focused stage. It must be completed before points 04 and 07 rely
+on update and part identity behavior.
 
-## Current song shape
+## Baseline contract
 
-The domain `Song` currently contains:
-
-```text
-id: GUID
-title: string or null
-author: string or null
-originalTitle: string or null
-number: string or null
-key: string or null
-tempo: string or null
-parts: Part[] or null
-order: GUID[] or null
-```
-
-Each `Part` has an ID, a name, and text. The `order` array is intended to
-reference part IDs.
-
-## Issue 1: the route ID is ignored during updates
-
-The endpoint receives both:
+On the current API branch, JSON uses this shape:
 
 ```text
-PUT /songs/{id}
-body: { "id": "...", ... }
+Song
+  id: GUID
+  title: string or null
+  author: string or null
+  originalTitle: string or null
+  number: string or null
+  key: string or null
+  tempo: string or null
+  parts: Part[] or null
+
+Part
+  id: GUID
+  name: string or null
+  text: string or null
 ```
 
-`SongEndpoints.UpdateSong` passes the route ID to `SongService`, but
-`SongService.UpdateSongAsync` currently passes only `songDto` to the
-repository. The repository therefore chooses the body ID and ignores the route
-ID.
+There is no `Song.order` property on this branch. The order of entries in
+`parts` is the display order. Remove stale `order` fields from examples rather
+than adding that property back.
 
-That makes these two IDs potentially disagree. A client that edits one row
-could accidentally update another song if it sent stale or malformed data.
+The API exposes:
 
-## Recommended update rule
+| Method | Path | Success | Missing record |
+| --- | --- | --- | --- |
+| `GET` | `/songs` | `200` plus array | Not applicable |
+| `GET` | `/songs/{id}` | `200` plus song | `404` |
+| `POST` | `/songs` | `201` plus created song | Not applicable |
+| `PUT` | `/songs/{id}` | `204` | `404` |
+| `DELETE` | `/songs/{id}` | `204` | `404` |
 
-Make the route ID authoritative. The server should update only the song named
-by `/songs/{id}`.
+## Problems to fix
 
-For a small learning project, the simplest rule is:
+### Route ID is ignored by update
 
-1. Receive the route ID.
-2. Reject a body ID that conflicts with it, or ignore the body ID.
-3. Set the domain object's ID from the route ID before calling the repository.
-4. Return `404` if that route ID does not exist.
+`SongEndpoints.UpdateSong` passes the route ID to
+`SongService.UpdateSongAsync`, but the service currently forwards only the
+deserialized `Song` to the repository. Because the `Song` constructor creates
+a GUID, a body without `id` tries to update a random record.
 
-The client should still preserve the selected song ID and use it in both the
-URL and the body until the server no longer needs a body ID.
-
-## Better long-term contract
-
-Separate transport requests from the persisted domain object:
+The required rule is:
 
 ```text
-CreateSongRequest: title, author, originalTitle, number, key, tempo, parts, order
-UpdateSongRequest: title, author, originalTitle, number, key, tempo, parts, order
-Song response:    id, title, author, originalTitle, number, key, tempo, parts, order
+PUT /songs/{routeId}
+-> routeId is authoritative
+-> body id is ignored
+-> repository receives a Song whose Id equals routeId
 ```
 
-The route owns identity for updates and the server owns identity for creates.
-This means the client never needs to invent or trust a song UUID.
+A request to song A's route must never update song B, even if the body contains
+B's ID.
 
-This is a useful pattern even in larger APIs: request DTOs describe what users
-may submit; response DTOs describe what the server returns.
+### Existing part IDs cannot round-trip
 
-## Issue 2: part IDs cannot be safely round-tripped
+`Part.Id` has no setter. JSON deserialization therefore cannot restore an
+existing part ID submitted by the client. Editing a song can silently replace
+all part identities.
 
-`Part.Id` currently has a getter but no setter and its constructor creates a
-new GUID. A JSON request cannot reliably restore a part's existing ID into
-that object. On an edit, the server can create fresh part IDs while receiving
-an `order` array that still refers to the old IDs.
+For this stage, use the minimal compatible rule:
 
-Do not build a polished parts-and-order editor until this contract is fixed.
-It could look successful in the browser while the saved structure is wrong.
+- Change `Part.Id` to a public get/set property.
+- Keep the constructor-generated GUID as the default for a new part.
+- Existing part IDs sent by the client are restored by JSON.
+- New part payloads omit `id`; the server constructor supplies it.
+- The client never generates a persistent part GUID.
 
-## Recommended part contract
+## Files in scope
 
-Choose one of these models and document it before implementing the UI.
+Required API files:
 
-### Option A: editable IDs in a simple DTO
+```text
+SongBookApi/src/SongBookApi.Domain/Dto/Part.cs
+SongBookApi/src/SongBookApi.Domain/Services/ISongService.cs
+SongBookApi/src/SongBookApi.Service/SongBookApi.Service.http
+SongBookApi/utils/simpleCurl.ps1
+```
 
-Use request/response DTOs where `Part.Id` can be read and written by JSON.
-Validate that IDs are unique within a song and that every `order` ID references
-one of the submitted parts.
+Inspect, but change only if necessary:
 
-- Good for: keeping the existing `order: GUID[]` design.
-- Trade-off: the API accepts IDs from the client, so it must validate them.
+```text
+SongBookApi/src/SongBookApi.Domain/Dto/Song.cs
+SongBookApi/src/SongBookApi.Domain/Repositories/ISongRepository.cs
+SongBookApi/src/SongBookApi.Infrastructure/Repositories/InMemorySongRepository.cs
+SongBookApi/src/SongBookApi.Service/Endpoints/SongEndpoints.cs
+```
 
-### Option B: server-generated IDs plus explicit mapping
+No client production file should change in this stage.
 
-Use a request part identifier that is only temporary, such as a client key,
-then have the server map it to persistent IDs before building `order`.
+## Required implementation sequence
 
-- Good for: strict server ownership of persistent IDs.
-- Trade-off: more DTO and mapping code.
+1. In `SongService.UpdateSongAsync(Guid id, Song songDto)`, overwrite
+   `songDto.Id` with the route `id` before calling the repository.
+2. Keep `ISongRepository.UpdateSongAsync(Song song)` unchanged unless a
+   compelling implementation issue is discovered.
+3. Change `Part.Id` from getter-only to `get; set;`, retaining constructor GUID
+   generation.
+4. Do not add `Order` to `Song`.
+5. Replace the stale weather-forecast request in
+   `SongBookApi.Service.http` with executable song CRUD examples.
+6. Remove `"order": []` from `utils/simpleCurl.ps1`.
+7. Make example update bodies demonstrate that the route is authoritative.
+8. Build the API and run the manual contract scenarios below.
 
-### Option C: represent display order directly
+## Request body rules for later client stages
 
-If order only means "show parts in this sequence", make the `parts` array
-itself the source of order and remove the separate `order` property.
+These rules become the contract consumed by points 04 and 07:
 
-- Good for: the simplest browser UI.
-- Trade-off: not appropriate if the same part needs to appear multiple times,
-  such as a chorus repeated between verses.
+### Create song
 
-Option A is the most direct fit for the current model. Option C is often
-easier if repeated parts are not a real feature.
+```json
+{
+  "title": "Amazing Grace",
+  "author": "John Newton",
+  "originalTitle": null,
+  "number": "1",
+  "key": "G",
+  "tempo": "Moderate",
+  "parts": [
+    {
+      "name": "Verse 1",
+      "text": "..."
+    }
+  ]
+}
+```
 
-## API validation decisions
+- Omit song `id`.
+- Omit `id` for every new part.
+- Do not send `order`.
 
-The current API allows nullable strings and has no documented validation.
-Decide which rules belong on the server before duplicating them in the client.
+### Update song
 
-At minimum, consider:
+```json
+{
+  "title": "Amazing Grace",
+  "author": "John Newton",
+  "originalTitle": null,
+  "number": "1",
+  "key": "A",
+  "tempo": "Moderate",
+  "parts": [
+    {
+      "id": "<existing-part-id>",
+      "name": "Verse 1",
+      "text": "Updated text"
+    },
+    {
+      "name": "Chorus",
+      "text": "New part"
+    }
+  ]
+}
+```
 
-- Whether a title must be non-empty.
-- Maximum lengths for text fields.
-- Whether `number` must be unique.
-- Whether a part name is required when part text exists.
-- Whether `order` may omit parts or repeat a part ID.
+- Song identity comes only from `/songs/{id}`.
+- Existing parts include their IDs.
+- New parts omit IDs.
+- Array position is the saved display order.
 
-The browser can provide friendly early validation, but the API must validate
-every request because callers can bypass the browser.
+## Validation policy
 
-## Implementation checklist
+Do not invent new business validation in this stage. The current API permits
+nullable scalar fields, so the client will also permit them. In particular:
 
-- [ ] Read `SongEndpoints.cs`, `ISongService.cs`, and
-      `InMemorySongRepository.cs` together.
-- [ ] Write the desired update identity rule in a test or an `.http` request.
-- [ ] Make `PUT /songs/{id}` use route identity consistently.
-- [ ] Decide and implement one part/order identity model.
-- [ ] Return meaningful client errors for malformed requests, rather than
-      storing inconsistent data.
-- [ ] Retest create, fetch one, update, and fetch one again.
-- [ ] Update `utils/simpleCurl.ps1` or the API `.http` file so examples match
-      the final contract.
+- `title` remains optional.
+- Blank optional client fields will later map to `null`.
+- No uniqueness rule is added for `number`.
+- Empty or null `parts` remain accepted.
 
-## Useful manual scenario
+API validation DTOs and formal length limits are valuable future work, but
+adding them now would expand the contract beyond the client CRUD task.
 
-Create two songs, A and B. Send a `PUT` request to A's URL with B's ID in the
-body. The endpoint must never update B. This is the clearest test that the
-route ID is truly authoritative.
+## Manual contract scenarios
+
+Run the API with its HTTPS profile, then verify:
+
+### Route identity
+
+1. Create song A and record its ID.
+2. Create song B and record its ID.
+3. Send `PUT /songs/{A-id}` with `"id": "{B-id}"` in the body.
+4. Fetch A and B.
+5. A must contain the submitted changes; B must remain unchanged.
+
+### Part identity
+
+1. Create a song with one part.
+2. Fetch the song and record the returned part ID.
+3. Update the part text while sending that part ID.
+4. Fetch the song again.
+5. The part text must change and its ID must remain equal to the recorded ID.
+
+### New part identity
+
+1. Update an existing song with one additional part that has no `id`.
+2. Fetch the song.
+3. The new part must have a non-empty server-generated ID.
+
+### Missing route
+
+Send `PUT` for a valid but unknown GUID. The response must remain `404`; no new
+song may be created.
+
+## Validation commands
+
+```sh
+dotnet build SongBookApi.slnx
+```
+
+Then execute the updated `.http` file or `utils/simpleCurl.ps1`. An AI model
+running on Linux may translate the PowerShell examples to equivalent `curl`
+commands, but it must preserve the same payloads and assertions.
+
+## Acceptance criteria
+
+- [ ] `PUT` always updates by route ID.
+- [ ] A conflicting body ID cannot redirect the update.
+- [ ] Unknown route IDs return `404`.
+- [ ] Existing part IDs survive an edit.
+- [ ] New parts receive server-generated IDs.
+- [ ] Part array order survives create and update.
+- [ ] No request or documentation example sends `order`.
+- [ ] The API solution builds successfully.
+
+## Non-goals
+
+- Do not introduce a database.
+- Do not add authentication or authorization.
+- Do not add `Song.order`.
+- Do not redesign all domain objects into request/response DTOs.
+- Do not add speculative validation rules.
+- Do not change endpoint paths or success status codes.
 
 ## Alternatives
 
-### Defer rich parts editing
+A stronger long-term design uses separate create/update request DTOs and
+response DTOs so request bodies never expose server-owned song identity. That
+is appropriate before a public production API, but the minimal changes above
+are the selected implementation for this learning branch.
 
-Implement CRUD for the scalar song fields first and submit `parts` and `order`
-as empty arrays. This is a practical learning milestone, but make the UI clear
-that lyrics/parts are not yet supported.
-
-### Send raw JSON for advanced data
-
-A temporary JSON textarea lets advanced users submit `parts` while the visual
-editor is being designed.
-
-- Good for: exercising the API quickly.
-- Trade-off: poor validation and poor usability for normal users.
-
-### Change the API before touching the client
-
-This is the recommended order for correctness. It can feel slower initially,
-but it avoids building a client around behavior that needs to change.
+If part identity is later found unnecessary, `Part.Id` could be removed from
+the public contract. Do not make that decision while the property is already
+exposed and the client is being designed to preserve it.
 
 ## Resources
 
 - [MDN: HTTP `PUT` method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods/PUT)
-- [MDN: HTTP `POST` method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods/POST)
 - [Microsoft: Model binding in ASP.NET Core](https://learn.microsoft.com/aspnet/core/mvc/models/model-binding)
 - [Microsoft: System.Text.Json overview](https://learn.microsoft.com/dotnet/standard/serialization/system-text-json/overview)
 
 ## Checkpoint
 
-You are ready to build the client editor when a song can be fetched, submitted
-back to the API, fetched again, and retain the intended ID, fields, parts, and
-ordering.
-
+This point is complete when route and part identity pass all manual scenarios
+and the examples describe the actual no-`order` contract.

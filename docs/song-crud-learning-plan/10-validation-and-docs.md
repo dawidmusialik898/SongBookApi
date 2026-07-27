@@ -8,6 +8,181 @@ few local setup facts a future developer needs to reproduce it.
 Do not stop after a happy-path demo. Most CRUD bugs appear around empty
 responses, missing records, browser restrictions, and failed requests.
 
+## AI implementation specification
+
+### Status and prerequisites
+
+Run this stage only after points 01-09 are complete. It is a verification and
+small-fix stage, not an opportunity for a broad refactor.
+
+### Files in scope
+
+Inspect all tracked source files in both repositories. Modify only defects
+directly revealed by the checks.
+
+Expected documentation/test helpers:
+
+```text
+SongBookApi/src/SongBookApi.Service/SongBookApi.Service.http
+SongBookApi/utils/simpleCurl.ps1
+SongBookClient/docs/song-crud-learning-plan/
+```
+
+Do not create `SongBookClient/README.md` automatically. The user intentionally
+deferred it while the project is small. Create one only after a separate
+request; keep setup facts accurate in these guides meanwhile.
+
+### Validation commands
+
+From the API repository:
+
+```sh
+dotnet build SongBookApi.slnx
+dotnet list src/SongBookApi.Service/SongBookApi.Service.csproj \
+  package --vulnerable --include-transitive
+```
+
+From the client repository:
+
+```sh
+node --check src/main.js
+node --check src/songsApi.js
+node --check src/songForm.js
+rg 'innerHTML|no-cors' index.html src
+rg '"order"[[:space:]]*:' index.html src
+rg "fetch\\(" src --glob "*.js"
+```
+
+Expected search results:
+
+- No `innerHTML`, `no-cors`, or serialized `order`.
+- Every raw `fetch(` occurrence is in `src/songsApi.js`.
+
+The baseline API branch was observed producing a vulnerability warning for a
+transitive `Microsoft.OpenApi` package. Record the current result. It does not
+block local CRUD verification by itself, but it must be resolved before point
+13 can claim production readiness.
+
+### Runtime setup
+
+Start the API:
+
+```sh
+dotnet run \
+  --project src/SongBookApi.Service/SongBookApi.Service.csproj \
+  --launch-profile https
+```
+
+Start the client from its repository:
+
+```sh
+lite-server
+```
+
+Use a clean browser tab at `http://localhost:3000` with the Network and Console
+panels open. Clear existing in-memory songs by restarting the API when a clean
+scenario is needed.
+
+### Required CRUD acceptance dataset
+
+Create at least these records:
+
+1. A song with every scalar field and two multi-line parts.
+2. A song with optional scalar fields left blank and no parts.
+3. A song with non-ASCII title/lyrics to confirm text handling.
+
+For each mutation, inspect method, URL, request JSON, status, and follow-up
+server state.
+
+### Required happy-path matrix
+
+| Scenario | Required result |
+| --- | --- |
+| Initial load | One `GET /songs`; loading then collection/empty state |
+| Refresh | New `GET /songs`; no duplicate concurrent request |
+| View | `GET /songs/{id}` and correct current detail |
+| Create | `POST /songs`, `201`, returned ID selected after refresh |
+| Edit scalar fields | `PUT /songs/{id}`, `204`, changed values visible after refetch |
+| Add/edit/reorder/remove parts | IDs preserved for existing parts; array order persisted |
+| Cancel create/edit | No mutation request |
+| Cancel delete | No DELETE request |
+| Confirm delete | `DELETE /songs/{id}`, `204`, row/detail removed after refresh |
+
+### Required failure matrix
+
+| Scenario | Required result |
+| --- | --- |
+| API stopped during list load | Previous list retained when available; reachable-error notice |
+| API stopped during save | Draft preserved and controls restored |
+| API stopped during delete | Song remains visible |
+| Individual `404` | Selection cleared and collection refreshed |
+| Update `404` | Draft preserved; user told record disappeared |
+| Delete `404` | UI converges to removed state |
+| Rapid A/B selection | Late A response cannot replace B |
+| Double Save | One mutation request |
+| Double Delete | One mutation request |
+| API restart | Client recovers; empty in-memory behavior is explained |
+
+### API contract regression checks
+
+Repeat point 02's two-song conflicting-ID scenario and part-ID round-trip
+scenario. Also confirm:
+
+- Create/update JSON contains no `order`.
+- Create JSON contains no song ID.
+- Update identity comes from the URL.
+- New parts omit IDs and receive IDs after refetch.
+- Existing part IDs remain stable.
+- `204` responses are not parsed as JSON.
+
+### Browser and accessibility checks
+
+- Complete CRUD with keyboard only.
+- Test 200 percent zoom.
+- Test narrow and wide viewports.
+- Confirm no horizontal page scrolling at 320 CSS pixels.
+- Confirm notices are announced by the browser accessibility tree/live-region
+  inspection.
+- Confirm focus returns to a useful location after cancel, save, and delete.
+- Confirm song/lyric strings are displayed literally rather than interpreted
+  as HTML.
+
+Use a harmless test title such as:
+
+```text
+<strong>Not markup</strong>
+```
+
+It must appear as literal text.
+
+### Fix policy
+
+When a check fails:
+
+1. Identify the smallest root cause.
+2. Change only files responsible for that behavior.
+3. Rerun the targeted scenario.
+4. Rerun the full static checks and happy-path CRUD matrix.
+5. Do not hide a failure with a fallback that looks successful.
+
+### Acceptance criteria
+
+- [ ] API build succeeds.
+- [ ] Vulnerability scan result is recorded for point 13.
+- [ ] All static architecture searches match expectations.
+- [ ] Every happy-path and failure scenario passes.
+- [ ] Console has no uncaught exceptions during tested flows.
+- [ ] Network panel shows the exact five endpoint patterns.
+- [ ] Part IDs and array ordering round-trip correctly.
+- [ ] Keyboard, focus, and narrow-layout checks pass.
+- [ ] No README or dependency is added without user approval.
+
+### Non-goals
+
+- Do not add a test framework solely for this stage.
+- Do not implement production database, auth, deployment, or monitoring.
+- Do not redesign working UI while fixing validation defects.
+
 ## Pre-flight checklist
 
 Before testing the UI:
@@ -32,16 +207,17 @@ Run this sequence in a fresh browser session:
 5. Confirm the new song appears in the list with the API-returned ID.
 6. Select it and confirm a `GET /songs/{id}` request loads its details.
 7. Change at least two fields and save.
-8. Confirm the request is `PUT /songs/{id}`, sends the intended ID/payload,
-   and handles the `204` response without JSON parsing errors.
+8. Confirm the request is `PUT /songs/{id}`, uses the intended route ID,
+   contains no song ID in the payload, and handles the `204` response without
+   JSON parsing errors.
 9. Reload the data from the API and confirm the changed values remain.
 10. Delete the song.
 11. Cancel once and confirm no network request occurs.
 12. Confirm once and verify `DELETE /songs/{id}` returns `204`.
 13. Confirm the row and selected detail are removed after refresh.
 
-Repeat the create, view, edit, and delete sequence for parts and order after
-the API's round-trip identity contract is complete.
+Repeat the create, view, edit, and delete sequence for parts after the API's
+round-trip identity contract is complete. Confirm array ordering.
 
 ## Failure cases to test
 
@@ -51,7 +227,6 @@ the API's round-trip identity contract is complete.
 | API returns `500` | User sees an action-specific failure and can retry. |
 | Selected song is deleted elsewhere | Detail load handles `404`, clears selection, and refreshes list. |
 | Delete target was already removed | UI reports the state and refreshes rather than crashing. |
-| Form has missing required title | Browser or inline validation prevents request and focuses the field. |
 | Double-click Save | Only one request is sent while saving is busy. |
 | Rapidly choose two songs | A late response cannot overwrite the newer selection. |
 | API restarts | UI can reload, and documentation explains that in-memory songs reset. |
@@ -133,22 +308,11 @@ Do not add a test framework just to satisfy a checklist. Add one when the
 project has enough repeated regression risk to justify its setup and
 maintenance.
 
-## Documentation to add or update
+## Documentation to update
 
-Add a short `SongBookClient/README.md` once the implementation is working.
-It should contain:
-
-1. A one-sentence description of the client.
-2. Required runtimes or tools, if any.
-3. How to start the API.
-4. How to serve the client locally.
-5. The client origin and API base URL.
-6. The required CORS policy and HTTPS certificate note.
-7. A brief explanation that data is in memory and resets with the API.
-8. The supported CRUD operations.
-
-Keep the setup commands copyable and use the same ports that the source code
-and CORS configuration actually use.
+Keep these numbered guides synchronized with the final implementation,
+especially URLs, file names, API body shape, and validation commands. A root
+README remains optional and requires a separate user decision.
 
 ## Final review questions
 
@@ -159,7 +323,7 @@ Before calling the work complete, answer these without looking at code:
 - What happens when the API returns `204`?
 - What happens when `GET /songs/{id}` returns `404`?
 - Why is the route ID authoritative for `PUT`?
-- How are part IDs and order preserved?
+- How are part IDs and array order preserved?
 - What browser origin is allowed by CORS?
 - How does a keyboard user create, save, cancel, and delete a song?
 
@@ -176,6 +340,5 @@ obvious.
 ## Checkpoint
 
 The work is complete when the acceptance script passes in a normal browser,
-failure states are truthful, and the client README lets another developer run
-the pair of projects without discovering hidden CORS, certificate, or
-in-memory-data assumptions.
+failure states are truthful, and these guides accurately state the CORS,
+certificate, and in-memory-data assumptions.

@@ -6,10 +6,113 @@ Implement `DELETE /songs/{id}` in a way that makes the destructive action
 clear, avoids duplicate requests, and restores a truthful UI after success or
 failure.
 
+## AI implementation specification
+
+### Status and prerequisites
+
+This stage is pending and requires points 04, 06, and 07.
+
+### Files in scope
+
+Modify:
+
+```text
+SongBookClient/src/main.js
+SongBookClient/styles/app.css
+```
+
+`songsApi.js` should already expose `deleteSong`; change it only if point-04
+validation reveals a defect.
+
+### Required UI
+
+Add one Delete button to each song list row and one to the loaded detail
+region. Both use the same delete handler and identify the record by
+`data-song-id`.
+
+Use a descriptive accessible label:
+
+```text
+Delete <song title or "untitled song">
+```
+
+Visual button text may remain `"Delete"`.
+
+### Required state and flow
+
+Use `state.deletingSongId` as the only delete-busy state.
+
+`requestSongDeletion(id)` must:
+
+1. Return if another deletion is already pending.
+2. Resolve the song display name from `state.songs` or
+   `state.selectedSong`.
+3. Call `window.confirm()` with:
+   `Delete "<name>"? This cannot be undone.`
+4. Return without state or network changes when cancelled.
+5. Set `deletingSongId`, rerender affected controls, and announce
+   `"Deleting song..."`.
+6. Await `deleteSong(id)`.
+7. On `204`, clear selection when the deleted ID was selected, reload the
+   collection, and announce success.
+8. On `404`, clear matching selection, reload the collection, and announce
+   that the song was already removed.
+9. On other failures, preserve list, selection, and details and show an error.
+10. Clear `deletingSongId` in `finally`.
+
+Only the target song's Delete controls should be disabled while pending.
+Disable Save as well only when the same selected song is being deleted.
+
+### Focus behavior
+
+After successful deletion:
+
+- If another song remains, focus its first View button.
+- If the collection is empty, focus `new-song-button`.
+
+After cancellation or failure, leave or restore focus on the Delete button
+that initiated the action.
+
+### Acceptance criteria
+
+- [ ] Cancel sends no request and changes no state.
+- [ ] Confirm sends exactly one `DELETE /songs/{id}`.
+- [ ] `204` clears the deleted row and selected details after server refresh.
+- [ ] `404` converges to the same absent state with an informational message.
+- [ ] Network/500 failure leaves the song visible.
+- [ ] Repeated clicks cannot create concurrent delete requests.
+- [ ] Deleting a non-selected song does not clear the current selection.
+- [ ] Delete buttons have understandable accessible names.
+
+### Validation
+
+```sh
+node --check src/main.js
+node --check src/songsApi.js
+```
+
+Browser scenarios:
+
+1. Cancel a list-row delete.
+2. Delete a non-selected song.
+3. Delete the selected song from its detail panel.
+4. Delete a song externally, then confirm its stale UI Delete action to test
+   `404`.
+5. Stop the API before confirming and verify state is retained.
+6. Double-click confirmation/action controls and inspect the Network panel for
+   one DELETE request.
+
+### Non-goals
+
+- Do not implement optimistic deletion, Undo, soft delete, bulk delete, or a
+  custom modal.
+- Do not send a DELETE request body.
+- Do not remove a row before the API confirms success or absence.
+
 ## Recommended first interaction
 
-Use a Delete button on each song row and optionally in the selected-song
-details. Before sending the request, ask for confirmation with the song title:
+Use a Delete button on each song row and in the selected-song details. Before
+sending the request, ask for confirmation with the song title:
 
 ```text
 Delete "Amazing Grace"? This cannot be undone.
@@ -129,4 +232,3 @@ You are ready for refinement when cancel does nothing, successful deletion
 removes the song after a server refresh, repeated clicks do not create
 duplicate requests, and API failures do not falsely remove the song from the
 page.
-

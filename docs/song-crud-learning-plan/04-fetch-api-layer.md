@@ -6,6 +6,169 @@ Expand `src/songsApi.js` into a predictable adapter for all five endpoints.
 The UI should receive JavaScript values or a meaningful error, never a silent
 `undefined` after a failed request.
 
+## AI implementation specification
+
+### Status and prerequisites
+
+This stage is pending. Points 02 and 03 must be complete.
+
+### Files in scope
+
+Modify:
+
+```text
+SongBookClient/src/songsApi.js
+SongBookClient/src/main.js
+```
+
+The `main.js` changes are compatibility changes only: update imports and the
+temporary sample-create call so the page remains usable until point 05.
+
+### Required public API
+
+`songsApi.js` must export exactly these runtime values:
+
+```js
+ApiError
+getSongs
+getSong
+createSong
+updateSong
+deleteSong
+```
+
+Keep one private collection constant:
+
+```js
+const SONGS_API_URL = "https://localhost:7152/songs";
+```
+
+Do not export or duplicate the URL.
+
+### `ApiError` contract
+
+Use an `Error` subclass with:
+
+```text
+name: "ApiError"
+message: human-readable technical summary
+status: HTTP status number, or null for a network failure
+details: parsed safe response body or null
+cause: original network error when available
+```
+
+The UI may inspect `status`; it must not parse message strings to identify a
+404.
+
+### Request helper contract
+
+Implement one private `request(url, options)` helper:
+
+1. Call `fetch`.
+2. Convert a network `TypeError` into `ApiError` with `status: null`.
+3. For a non-success response, attempt to read JSON when the content type is
+   JSON; otherwise read text when present.
+4. Throw `ApiError` containing status and parsed details.
+5. Return `undefined` for `204`.
+6. For other successful responses, parse JSON only when the response declares
+   JSON.
+7. Do not catch errors merely to log and return a fallback value.
+
+JSON request headers belong only on requests with a JSON body.
+
+### Endpoint wrappers
+
+Implement these exact mappings:
+
+```text
+getSongs()
+  GET https://localhost:7152/songs
+  -> Song[]
+
+getSong(id)
+  GET https://localhost:7152/songs/{encoded-id}
+  -> Song
+
+createSong(payload)
+  POST https://localhost:7152/songs
+  JSON body
+  -> created Song
+
+updateSong(id, payload)
+  PUT https://localhost:7152/songs/{encoded-id}
+  JSON body
+  -> undefined after 204
+
+deleteSong(id)
+  DELETE https://localhost:7152/songs/{encoded-id}
+  -> undefined after 204
+```
+
+Reject a missing or blank `id` before issuing an individual request. A simple
+`TypeError` with a clear message is sufficient for this programmer error.
+
+### Compatibility update in `main.js`
+
+1. Replace imports of `fetchSongs` and `postSong`.
+2. Use `getSongs()` in the stage-03 loader.
+3. Convert the hard-coded sample create call into one payload object:
+
+   ```js
+   {
+     title: "Imagine",
+     author: "John Lennon",
+     originalTitle: null,
+     number: "1",
+     key: null,
+     tempo: null,
+     parts: []
+   }
+   ```
+
+4. Catch API failures at the temporary event/load boundary, log the error, and
+   retain the last successful list. User-facing messaging is added in points
+   05 and 09.
+5. Remove all `?? []` error fallbacks that make a failed request look like a
+   successful empty collection.
+
+### Acceptance criteria
+
+- [ ] All five endpoint functions exist and use the shared helper.
+- [ ] Collection URLs are not duplicated.
+- [ ] IDs are URL-encoded.
+- [ ] Create/update payloads are serialized once.
+- [ ] Update and delete do not parse `204` as JSON.
+- [ ] `404` produces `ApiError.status === 404`.
+- [ ] A stopped API produces `ApiError.status === null`.
+- [ ] The current page still lists and creates the sample song.
+- [ ] There are no silent `undefined` returns after request failures.
+
+### Validation
+
+```sh
+node --check src/songsApi.js
+node --check src/main.js
+```
+
+With both servers running, exercise each exported function from a temporary
+browser-console import:
+
+```js
+const api = await import("./src/songsApi.js");
+```
+
+Create a song, fetch the collection, fetch the created ID, update it, delete
+it, and confirm a subsequent individual fetch throws a 404 `ApiError`.
+
+### Non-goals
+
+- Do not add retry loops, request caching, authentication headers, or timeout
+  abstractions.
+- Do not add Axios or another HTTP dependency.
+- Do not put DOM or user-message logic in `songsApi.js`.
+- Do not send song `id` in create/update bodies after point 02.
+- Do not send `order`.
+
 ## Public functions to design
 
 Use names that describe the API action:
@@ -79,13 +242,13 @@ For create:
 
 - Omit the song `id`; the server creates it.
 - Include optional scalar fields consistently as either `null` or `""`.
-- Use `parts: []` and `order: []` until the part contract is safe.
+- Use `parts: []` when no parts have been entered.
 
 For update:
 
 - Use `encodeURIComponent(id)` when building the path.
-- Preserve the selected ID in the request body as a compatibility measure
-  until the API fix in document 02 is complete.
+- Omit the song ID from the body; point 02 makes the route authoritative.
+- Preserve IDs for existing parts and omit IDs for newly added parts.
 - Send the full current payload, not only fields that happened to change,
   because the endpoint behaves like a replacement `PUT`.
 
@@ -155,4 +318,3 @@ right learning choice here.
 Before building the page UI, use the browser console or a temporary button to
 exercise each exported API function. Verify that successes return the expected
 shape and failures throw an error with a clear status and message.
-

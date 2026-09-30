@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using SongBookApi.Domain;
 using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Repositories;
 using SongBookApi.Infrastructure.Identity;
@@ -8,13 +9,15 @@ namespace SongBookApi.Infrastructure.Repositories;
 
 public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBookRepository
 {
-    public async Task<IReadOnlyList<AccessibleSongBook>> ListAccessibleAsync(string userId) =>
-        await dbContext.SongBooks
+    public async Task<PageResult<AccessibleSongBook>> ListAccessibleAsync(string userId, int page) =>
+        Paging.FromLookahead(await dbContext.SongBooks
             .AsNoTracking()
             .Where(book => book.OwnerId == userId ||
                 book.AccessEntries.Any(entry => entry.UserId == userId))
             .OrderBy(book => book.Name)
             .ThenBy(book => book.Id)
+            .Skip(Paging.Offset(page))
+            .Take(Paging.Size + 1)
             .Select(book => new AccessibleSongBook(
                 book.Id,
                 book.Name,
@@ -26,7 +29,7 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
                         .Select(entry => (SongBookAccessLevel?)entry.AccessLevel)
                         .Single(),
                 book.Songs.Count))
-            .ToListAsync();
+            .ToListAsync(), page);
 
     public async Task<AccessibleSongBook?> GetAccessibleAsync(Guid bookId, string userId) =>
         await dbContext.SongBooks
@@ -80,8 +83,8 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         await dbContext.SaveChangesAsync();
     }
 
-    public async Task<IReadOnlyList<SongBookCollaborator>> ListAccessAsync(Guid bookId) =>
-        await (
+    public async Task<PageResult<SongBookCollaborator>> ListAccessAsync(Guid bookId, int page) =>
+        Paging.FromLookahead(await (
             from access in dbContext.SongBookAccessEntries.AsNoTracking()
             join user in dbContext.Users.AsNoTracking() on access.UserId equals user.Id
             where access.SongBookId == bookId
@@ -90,7 +93,9 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
                 access.Id,
                 user.Email!,
                 access.AccessLevel))
-            .ToListAsync();
+            .Skip(Paging.Offset(page))
+            .Take(Paging.Size + 1)
+            .ToListAsync(), page);
 
     public Task<SongBookAccess?> FindAccessAsync(Guid bookId, string userId) =>
         dbContext.SongBookAccessEntries.SingleOrDefaultAsync(entry =>

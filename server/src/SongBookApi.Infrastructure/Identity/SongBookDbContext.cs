@@ -13,6 +13,7 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
     public DbSet<SongBookAccess> SongBookAccessEntries => Set<SongBookAccess>();
     public DbSet<Song> Songs => Set<Song>();
     public DbSet<Part> Parts => Set<Part>();
+    public DbSet<Chord> Chords => Set<Chord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -71,6 +72,7 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
         builder.Entity<Song>(entity =>
         {
             entity.HasKey(song => song.Id);
+            entity.HasIndex(song => new { song.SongBookId, song.Title, song.Id });
             entity.HasMany(song => song.Parts)
                 .WithOne()
                 .HasForeignKey(part => part.SongId)
@@ -81,9 +83,22 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
         {
             entity.HasKey(part => part.Id);
             entity.HasIndex(part => new { part.SongId, part.Position }).IsUnique();
+            entity.HasMany(part => part.Chords)
+                .WithOne()
+                .HasForeignKey(chord => chord.PartId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_Parts_Position_NonNegative",
                 "\"Position\" >= 0"));
+        });
+
+        builder.Entity<Chord>(entity =>
+        {
+            entity.HasKey(chord => new { chord.PartId, chord.Offset });
+            entity.Property(chord => chord.Symbol).HasMaxLength(64).IsRequired();
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_Chords_Offset_NonNegative",
+                "\"Offset\" >= 0"));
         });
     }
 }

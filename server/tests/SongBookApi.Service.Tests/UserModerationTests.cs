@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SongBookApi.Domain;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Contracts;
 
@@ -44,8 +45,8 @@ public sealed class UserModerationTests
         Assert.Equal("superuser",
             (await waiting.GetFromJsonAsync<AuthenticatedUserResponse>("/auth/me"))?.Role);
 
-        ModeratedUserResponse[] users =
-            (await waiting.GetFromJsonAsync<ModeratedUserResponse[]>("/admin/users"))!;
+        IReadOnlyList<ModeratedUserResponse> users =
+            (await waiting.GetFromJsonAsync<PageResult<ModeratedUserResponse>>("/admin/users"))!.Items;
         Assert.Single(users);
         Assert.Equal("user", users[0].Role);
         Assert.DoesNotContain(users, user => user.Email == superEmail);
@@ -146,9 +147,9 @@ public sealed class UserModerationTests
             (await super.GetAsync($"/songbooks/{privateBook.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await moderator.GetAsync($"/songbooks/{privateBook.Id}")).StatusCode);
-        ModeratedUserResponse[] users =
-            (await moderator.GetFromJsonAsync<ModeratedUserResponse[]>("/admin/users"))!;
-        Assert.Equal(3, users.Length);
+        IReadOnlyList<ModeratedUserResponse> users =
+            (await moderator.GetFromJsonAsync<PageResult<ModeratedUserResponse>>("/admin/users"))!.Items;
+        Assert.Equal(3, users.Count);
         Assert.Contains(users, user => user.Id == superId && user.Role == "superuser");
         Assert.Contains(users, user => user.Id == ordinaryId && user.Role == "user");
 
@@ -238,7 +239,7 @@ public sealed class UserModerationTests
             Assert.Equal(HttpStatusCode.Unauthorized, deniedLogin.StatusCode);
         }
         Assert.Contains(
-            (await super.GetFromJsonAsync<ModeratedUserResponse[]>("/admin/users"))!,
+            (await super.GetFromJsonAsync<PageResult<ModeratedUserResponse>>("/admin/users"))!.Items,
             user => user.Id == targetId && user.IsBanned);
         using (HttpResponseMessage unbanned = await AuthenticationTestHelpers.PutJsonWithAntiforgeryAsync(
                    super, $"/admin/users/{targetId}/ban", new { isBanned = false }))

@@ -161,6 +161,27 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("SongBookApi.Domain.Dto.Chord", b =>
+                {
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Offset")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PartId", "Offset");
+
+                    b.ToTable("Chords", t =>
+                        {
+                            t.HasCheckConstraint("CK_Chords_Offset_NonNegative", "\"Offset\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("SongBookApi.Domain.Dto.Part", b =>
                 {
                     b.Property<Guid>("Id")
@@ -225,7 +246,7 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SongBookId");
+                    b.HasIndex("SongBookId", "Title", "Id");
 
                     b.ToTable("Songs");
                 });
@@ -419,6 +440,15 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SongBookApi.Domain.Dto.Chord", b =>
+                {
+                    b.HasOne("SongBookApi.Domain.Dto.Part", null)
+                        .WithMany("Chords")
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SongBookApi.Domain.Dto.Part", b =>
                 {
                     b.HasOne("SongBookApi.Domain.Dto.Song", null)
@@ -461,6 +491,11 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .IsRequired();
 
                     b.Navigation("SongBook");
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Dto.Part", b =>
+                {
+                    b.Navigation("Chords");
                 });
 
             modelBuilder.Entity("SongBookApi.Domain.Dto.Song", b =>

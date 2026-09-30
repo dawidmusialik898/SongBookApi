@@ -8,7 +8,7 @@ public interface ISongService
 {
     Task<Song> CreateSongAsync(Guid songBookId, Song song);
     Task<bool> DeleteSongAsync(Guid songBookId, Guid songId);
-    Task<IReadOnlyList<Song>> GetAllSongsAsync(Guid songBookId);
+    Task<PageResult<SongSummary>> GetSongsPageAsync(Guid songBookId, int page);
     Task<Song?> GetSongByIdAsync(Guid songBookId, Guid songId);
     Task<bool> UpdateSongAsync(Guid songBookId, Guid songId, Song song);
 }
@@ -36,10 +36,10 @@ public class SongService : ISongService
         return await _songRepository.DeleteAsync(songBookId, songId);
     }
 
-    public async Task<IReadOnlyList<Song>> GetAllSongsAsync(Guid songBookId)
+    public async Task<PageResult<SongSummary>> GetSongsPageAsync(Guid songBookId, int page)
     {
-        _logger.LogInformation("Getting all songs in book {SongBookId}", songBookId);
-        return await _songRepository.GetAllAsync(songBookId);
+        _logger.LogInformation("Getting page {Page} of songs in book {SongBookId}", page, songBookId);
+        return await _songRepository.GetPageAsync(songBookId, page);
     }
 
     public async Task<Song?> GetSongByIdAsync(Guid songBookId, Guid songId)

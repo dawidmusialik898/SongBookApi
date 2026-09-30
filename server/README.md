@@ -115,7 +115,7 @@ Moderation roles do **not** bypass song-book ownership/access checks.
 
 | Method | Path | Access | Request body | Success |
 | --- | --- | --- | --- | --- |
-| `GET` | `/admin/users` | Moderator/SuperUser | — | `200` user summaries (excluding caller) |
+| `GET` | `/admin/users?page=N` | Moderator/SuperUser | — | `200` paged user summaries (excluding caller) |
 | `PUT` | `/admin/users/{userId}/role` | SuperUser | `{ "role": "moderator" }` or `{ "role": "user" }` | `204` |
 | `PUT` | `/admin/users/{userId}/ban` | Moderator/SuperUser | `{ "isBanned": true }` or `false` | `204` |
 | `DELETE` | `/admin/users/{userId}` | Moderator/SuperUser | — | `204` |
@@ -136,12 +136,12 @@ the action, not account email addresses.
 
 | Method | Path | Minimum access | Success |
 | --- | --- | --- | --- |
-| `GET` | `/songbooks` | Authenticated | `200` summaries |
+| `GET` | `/songbooks?page=N` | Authenticated | `200` paged summaries |
 | `POST` | `/songbooks` | Authenticated | `201` summary |
 | `GET` | `/songbooks/{bookId}` | Reader | `200` summary/detail |
 | `PUT` | `/songbooks/{bookId}` | Admin | `204` |
 | `DELETE` | `/songbooks/{bookId}` | Admin | `204` |
-| `GET` | `/songbooks/{bookId}/access` | Admin | `200` collaborators |
+| `GET` | `/songbooks/{bookId}/access?page=N` | Admin | `200` paged collaborators |
 | `PUT` | `/songbooks/{bookId}/access` | Admin | `200` collaborator |
 | `DELETE` | `/songbooks/{bookId}/access/{accessId}` | Admin | `204` |
 
@@ -182,7 +182,7 @@ Admin and cannot have an access entry.
 
 | Method | Path | Minimum access | Success |
 | --- | --- | --- | --- |
-| `GET` | `/songbooks/{bookId}/songs` | Reader | `200` songs |
+| `GET` | `/songbooks/{bookId}/songs?page=N` | Reader | `200` paged song summaries |
 | `POST` | `/songbooks/{bookId}/songs` | Editor | `201` song |
 | `GET` | `/songbooks/{bookId}/songs/{songId}` | Reader | `200` song |
 | `PUT` | `/songbooks/{bookId}/songs/{songId}` | Editor | `204` |
@@ -209,6 +209,68 @@ Create payload:
 
 For updates, include each retained existing part's server-issued `id`; omit
 `id` for new parts. The array order is persisted as zero-based positions.
+Each part may also have an optional `chords` array:
+
+```json
+{
+  "name": "Verse 1",
+  "text": "Amazing grace",
+  "chords": [
+    { "offset": 0, "symbol": "G" },
+    { "offset": 8, "symbol": "D7" }
+  ]
+}
+```
+
+`offset` is a zero-based UTF-16 index into that part's exact `text` (the same
+index reported by a browser text cursor). Spaces and other lyric characters
+can each have a chord, including adjacent characters and characters after a
+line break. Line breaks and the second half of a surrogate pair cannot be
+anchors. At most one chord is allowed at each offset. `symbol` is nonblank,
+trimmed on save, and at most 64 characters; any chord notation is allowed.
+Invalid, duplicate, or out-of-range chords return `400` with a validation
+error instead of being saved.
+
+On `PUT`, an explicit `chords` array replaces that part's annotations;
+`"chords": []` removes them. If `chords` is omitted for a retained part, its
+existing annotations are preserved when its lyrics have not changed. Changing
+lyrics of a chorded part without submitting `chords` returns `400` rather
+than silently losing or misaligning them. Parts without chords still accept
+the original payload shape and return `"chords": []` on reads. The browser
+editor places chords at the lyric cursor, follows unchanged characters when
+lyrics are edited, and warns when an anchored character is removed. Chorded
+lyrics retain their whitespace to keep offsets stable; the song view offers
+a **Show chords** toggle without altering the saved lyrics.
+
+Apply the `AddPartChords` migration before deploying this feature; it adds
+only the chord annotations table, leaving existing songs and parts intact.
+
+## Paged collections
+
+The four list routes above default to page 1 and accept a positive integer
+`page` query parameter. They return at most 50 entries per page, with this
+response shape (including on an empty page):
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "hasNext": false
+}
+```
+
+`hasNext` indicates whether another page exists; an invalid or overflowing
+page returns `400`. Book pages are ordered by name and ID, song pages by title
+and ID, collaborator pages by email and access-entry ID, and user pages by
+email and ID. The client provides Previous/Next controls and returns to the
+previous page if a deletion empties the current one.
+
+Song-list items contain only `id`, `title`, `author`, and `number`. Fetch
+`GET /songbooks/{bookId}/songs/{songId}` for the full song, including its
+ordered parts and lyrics. The list routes still enforce their existing
+authorization rules on every request. Apply the
+`IndexSongsForPagedLists` migration before deploying this API; it indexes
+the song-book/title/ID order used for pages.
 
 ## Authorization behavior
 
@@ -221,7 +283,7 @@ For updates, include each retained existing part's server-issued `id`; omit
 - Permission is queried from SQLite on every request, so revocation is
   immediate.
 
-Deleting a book cascades to its songs, parts, and access entries. Deleting a
+Deleting a book cascades to its songs, parts, chords, and access entries. Deleting a
 collaborator account cascades its access rows. Owner account deletion is
 restricted so it cannot silently delete owned books.
 

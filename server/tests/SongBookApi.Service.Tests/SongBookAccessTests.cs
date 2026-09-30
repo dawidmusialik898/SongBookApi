@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SongBookApi.Domain;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Contracts;
 
@@ -37,7 +38,7 @@ public sealed class SongBookAccessTests : IClassFixture<TestApplicationFactory>
         Assert.Equal(granted.Id, changed.Id);
         Assert.Equal("editor", changed.AccessLevel);
         Assert.Contains(
-            (await reader.GetFromJsonAsync<SongBookResponse[]>("/songbooks"))!,
+            (await reader.GetFromJsonAsync<PageResult<SongBookResponse>>("/songbooks"))!.Items,
             candidate => candidate.Id == book.Id && candidate.AccessLevel == "editor");
 
         using HttpResponseMessage removed =
@@ -45,7 +46,7 @@ public sealed class SongBookAccessTests : IClassFixture<TestApplicationFactory>
                 owner, $"/songbooks/{book.Id}/access/{granted.Id}");
         Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
         Assert.DoesNotContain(
-            (await reader.GetFromJsonAsync<SongBookResponse[]>("/songbooks"))!,
+            (await reader.GetFromJsonAsync<PageResult<SongBookResponse>>("/songbooks"))!.Items,
             candidate => candidate.Id == book.Id);
         Assert.Equal(HttpStatusCode.NotFound, (await reader.GetAsync($"/songbooks/{book.Id}")).StatusCode);
     }

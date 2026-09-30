@@ -4,8 +4,31 @@ class FakeNode {
     }
 
     appendChild(child) {
+        return this.insertBefore(child, null)
+    }
+
+    insertBefore(child, reference) {
+        if (reference !== null && !this.children.includes(reference)) {
+            throw new Error("Reference node is not a child.")
+        }
+
+        child.parentNode?.removeChild(child)
+        const index = reference === null
+            ? this.children.length
+            : this.children.indexOf(reference)
+        this.children.splice(index, 0, child)
         child.parentNode = this
-        this.children.push(child)
+        return child
+    }
+
+    removeChild(child) {
+        const index = this.children.indexOf(child)
+        if (index === -1) {
+            throw new Error("Node is not a child.")
+        }
+
+        this.children.splice(index, 1)
+        child.parentNode = null
         return child
     }
 
@@ -115,6 +138,10 @@ class FakeElement extends FakeNode {
         }
     }
 
+    remove() {
+        this.parentNode?.removeChild(this)
+    }
+
     get elements() {
         const formControls = findElements(
             this,
@@ -149,8 +176,9 @@ class FakeElement extends FakeNode {
         return this.dispatch("submit")
     }
 
-    async dispatch(type) {
+    async dispatch(type, properties = {}) {
         const event = {
+            ...properties,
             currentTarget: null,
             defaultPrevented: false,
             preventDefault() {
@@ -452,6 +480,22 @@ export function installTestBrowser(
             "moderation-panel"
         ],
         ["ul", "moderation-list", "", false, "moderation-panel"],
+        ["nav", "user-pagination", "", true, "moderation-panel"],
+        [
+            "button",
+            "previous-user-page-button",
+            "Previous users",
+            false,
+            "user-pagination"
+        ],
+        ["span", "user-page-status", "Page 1", false, "user-pagination"],
+        [
+            "button",
+            "next-user-page-button",
+            "Next users",
+            false,
+            "user-pagination"
+        ],
         ["aside", "song-books-panel", "", false, "app-layout"],
         ["div", "song-book-content", "", false, "app-layout"],
         [
@@ -483,6 +527,28 @@ export function installTestBrowser(
             "song-books-panel"
         ],
         ["ul", "song-book-list", "", false, "song-books-panel"],
+        ["nav", "song-book-pagination", "", true, "song-books-panel"],
+        [
+            "button",
+            "previous-song-book-page-button",
+            "Previous song books",
+            false,
+            "song-book-pagination"
+        ],
+        [
+            "span",
+            "song-book-page-status",
+            "Page 1",
+            false,
+            "song-book-pagination"
+        ],
+        [
+            "button",
+            "next-song-book-page-button",
+            "Next song books",
+            false,
+            "song-book-pagination"
+        ],
         ["form", "song-book-form", "", true, "song-books-panel"],
         [
             "h3",
@@ -563,6 +629,34 @@ export function installTestBrowser(
             "song-book-access-panel"
         ],
         [
+            "nav",
+            "member-pagination",
+            "",
+            true,
+            "song-book-access-panel"
+        ],
+        [
+            "button",
+            "previous-member-page-button",
+            "Previous collaborators",
+            false,
+            "member-pagination"
+        ],
+        [
+            "span",
+            "member-page-status",
+            "Page 1",
+            false,
+            "member-pagination"
+        ],
+        [
+            "button",
+            "next-member-page-button",
+            "Next collaborators",
+            false,
+            "member-pagination"
+        ],
+        [
             "form",
             "song-book-access-form",
             "",
@@ -608,6 +702,22 @@ export function installTestBrowser(
             "song-book-content"
         ],
         ["ul", "song-list", "", false, "song-book-content"],
+        ["nav", "song-pagination", "", true, "song-book-content"],
+        [
+            "button",
+            "previous-song-page-button",
+            "Previous songs",
+            false,
+            "song-pagination"
+        ],
+        ["span", "song-page-status", "Page 1", false, "song-pagination"],
+        [
+            "button",
+            "next-song-page-button",
+            "Next songs",
+            false,
+            "song-pagination"
+        ],
         ["div", "song-details", "", false, "song-book-content"],
         ["form", "song-form", "", true, "song-book-content"],
         ["h3", "song-form-heading", "Song editor", false, "song-form"],
@@ -724,6 +834,9 @@ export function installTestBrowser(
             method: options.method ?? "GET",
             url: String(url)
         }
+        if (options.signal !== undefined) {
+            request.signal = options.signal
+        }
 
         if (request.url === "/auth/antiforgery") {
             return createFetchResponse({
@@ -754,14 +867,15 @@ export function installTestBrowser(
 
         if (request.url.startsWith("/admin/users")) {
             moderationRequests.push(request)
-            return createFetchResponse(
+            return createFetchResponse(toPagedResponse(
                 moderationHandler === null
                     ? {
                         body: { title: "Unexpected moderation request" },
                         status: 500
                     }
-                    : await moderationHandler(request)
-            )
+                    : await moderationHandler(request),
+                request
+            ))
         }
 
         if (request.url.startsWith("/songbooks")) {
@@ -778,30 +892,42 @@ export function installTestBrowser(
                     ...request,
                     url: songSegments.length === 0
                         ? "/songs"
-                        : `/songs/${songSegments.join("/")}`
+                        : `/songs/${songSegments.join("/")}`,
+                    page: Number(new URL(
+                        request.url,
+                        "https://localhost/"
+                    ).searchParams.get("page") ?? 1)
                 }
+                const response = await fetchHandler(legacyRequest)
                 return createFetchResponse(
-                    await fetchHandler(legacyRequest)
+                    songSegments.length === 0
+                        ? toPagedResponse(response, request)
+                        : response
                 )
             }
 
             songBookRequests.push(request)
 
             if (songBookHandler !== null) {
+                const response = await songBookHandler(request)
                 return createFetchResponse(
-                    await songBookHandler(request)
+                    request.method === "GET" &&
+                        (segments.length === 1 ||
+                            segments.at(-1) === "access")
+                        ? toPagedResponse(response, request)
+                        : response
                 )
             }
 
             if (request.method === "GET" && segments.length === 1) {
-                return createFetchResponse({
+                return createFetchResponse(toPagedResponse({
                     body: [{
                         id: "default-book",
                         name: "Default song book",
                         accessLevel: "admin",
                         songCount: 0
                     }]
-                })
+                }, request))
             }
 
             if (
@@ -822,7 +948,10 @@ export function installTestBrowser(
                 request.method === "GET" &&
                 segments.at(-1) === "access"
             ) {
-                return createFetchResponse({ body: [] })
+                return createFetchResponse(toPagedResponse(
+                    { body: [] },
+                    request
+                ))
             }
 
             return createFetchResponse({
@@ -882,6 +1011,26 @@ export function installTestBrowser(
                 element =>
                     element.className === "song-book-list__summary"
             ).map(element => element.textContent)
+        }
+    }
+}
+
+function toPagedResponse(response, request) {
+    if (request.method !== "GET" || !Array.isArray(response.body)) {
+        return response
+    }
+
+    const page = Number(new URL(
+        request.url,
+        "https://localhost/"
+    ).searchParams.get("page") ?? 1)
+    const offset = (page - 1) * 50
+    return {
+        ...response,
+        body: {
+            items: response.body.slice(offset, offset + 50),
+            page,
+            hasNext: response.body.length > offset + 50
         }
     }
 }

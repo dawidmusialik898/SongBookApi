@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SongBookApi.Domain;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Contracts;
 
@@ -25,10 +26,12 @@ public sealed class SongBookTests : IClassFixture<TestApplicationFactory>
         Assert.Equal("admin", created.AccessLevel);
         Assert.Equal(0, created.SongCount);
 
-        SongBookResponse[]? ownerBooks = await owner.GetFromJsonAsync<SongBookResponse[]>("/songbooks");
-        SongBookResponse[]? strangerBooks = await stranger.GetFromJsonAsync<SongBookResponse[]>("/songbooks");
-        Assert.Contains(ownerBooks!, book => book.Id == created.Id);
-        Assert.Empty(strangerBooks!);
+        PageResult<SongBookResponse>? ownerBooks =
+            await owner.GetFromJsonAsync<PageResult<SongBookResponse>>("/songbooks");
+        PageResult<SongBookResponse>? strangerBooks =
+            await stranger.GetFromJsonAsync<PageResult<SongBookResponse>>("/songbooks");
+        Assert.Contains(ownerBooks!.Items, book => book.Id == created.Id);
+        Assert.Empty(strangerBooks!.Items);
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await stranger.GetAsync($"/songbooks/{created.Id}")).StatusCode);

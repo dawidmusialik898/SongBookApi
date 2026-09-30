@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using SongBookApi.Domain;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
 using SongBookApi.Service.Contracts;
@@ -28,31 +29,47 @@ public static class ModerationEndpoints
 
     private static async Task<IResult> List(
         ClaimsPrincipal principal,
-        SongBookDbContext dbContext)
+        SongBookDbContext dbContext,
+        int page = 1)
     {
+        IResult? invalidPage = EndpointHelpers.ValidatePage(page);
+        if (invalidPage is not null)
+        {
+            return invalidPage;
+        }
+
         string callerId = EndpointHelpers.GetUserId(principal);
         var users = await dbContext.Users.AsNoTracking()
             .Where(user => user.Id != callerId)
             .OrderBy(user => user.NormalizedEmail)
+            .ThenBy(user => user.Id)
+            .Skip(Paging.Offset(page))
+            .Take(Paging.Size + 1)
             .Select(user => new { user.Id, user.Email, user.IsBanned, user.EmailConfirmed })
             .ToListAsync();
+        var visibleUsers = users.Take(Paging.Size).ToArray();
+        string[] userIds = visibleUsers.Select(user => user.Id).ToArray();
         var assignments = await dbContext.UserRoles
+            .Where(assignment => userIds.Contains(assignment.UserId))
             .Join(dbContext.Roles, assignment => assignment.RoleId,
                 role => role.Id, (assignment, role) => new { assignment.UserId, role.Name })
             .ToListAsync();
         ILookup<string, string?> rolesByUser = assignments.ToLookup(
             assignment => assignment.UserId, assignment => assignment.Name);
 
-        return Results.Ok(users.Select(user => new ModeratedUserResponse(
-            user.Id,
-            user.Email,
-            rolesByUser[user.Id].Contains(AuthConstants.SuperUserRole)
-                ? "superuser"
-                : rolesByUser[user.Id].Contains(AuthConstants.ModeratorRole)
-                    ? "moderator"
-                    : "user",
-            user.IsBanned,
-            user.EmailConfirmed)));
+        return Results.Ok(new PageResult<ModeratedUserResponse>(
+            visibleUsers.Select(user => new ModeratedUserResponse(
+                user.Id,
+                user.Email,
+                rolesByUser[user.Id].Contains(AuthConstants.SuperUserRole)
+                    ? "superuser"
+                    : rolesByUser[user.Id].Contains(AuthConstants.ModeratorRole)
+                        ? "moderator"
+                        : "user",
+                user.IsBanned,
+                user.EmailConfirmed)).ToArray(),
+            page,
+            users.Count > Paging.Size));
     }
 
     private static async Task<IResult> SetRole(

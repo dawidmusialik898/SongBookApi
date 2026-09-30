@@ -38,15 +38,30 @@ import {
     buildSongPayload,
     createPartDraft,
     populateSongForm,
+    renderChordEditor,
     renderPartsEditor
 } from "./songForm.js"
+import {
+    adjustChordsForTextEdit,
+    isChordAnchor,
+    renderChordedText
+} from "./chords.js"
+import {
+    fetchAvailablePage,
+    readPage,
+    renderPageControls
+} from "./pagination.js"
 
 export const state = {
     songBooks: [],
+    songBookPage: 1,
+    songBookHasNext: false,
     selectedSongBookId: null,
     selectedSongBook: null,
     selectedSongBookAccessLevel: null,
     songBookMembers: [],
+    memberPage: 1,
+    memberHasNext: false,
     songBookFormMode: "idle",
     isLoadingSongBooks: false,
     isLoadingSongBook: false,
@@ -54,8 +69,11 @@ export const state = {
     isLoadingSongBookMembers: false,
     isSavingSongBookAccess: false,
     songs: [],
+    songPage: 1,
+    songHasNext: false,
     selectedSongId: null,
     selectedSong: null,
+    showChords: true,
     editorMode: "idle",
     isLoadingSongs: false,
     isLoadingSong: false,
@@ -71,6 +89,8 @@ export const state = {
     authView: "none",
     isAuthPending: false,
     managedUsers: [],
+    managedUserPage: 1,
+    managedUserHasNext: false,
     showUserManagement: false,
     isLoadingManagedUsers: false,
     mutatingManagedUserId: null
@@ -89,6 +109,7 @@ let songBookListRequestId = 0
 let songBookSelectionRequestId = 0
 let songCollectionRequestId = 0
 let songDetailRequestId = 0
+let songDetailController = null
 let songBookMembersRequestId = 0
 let songBookAccessMutationId = 0
 let songBookMutationId = 0
@@ -96,6 +117,20 @@ let songMutationId = 0
 let managedUserListRequestId = 0
 let managedUserMutationId = 0
 let managedUserListLoadFailed = false
+let renderedBooks = null
+let renderedBookSelection = null
+let renderedBookBusy = null
+let bookRows = new Map()
+let renderedSongs = null
+let renderedSongWriteAccess = null
+let renderedSongSelection = null
+let renderedSongSaving = null
+let renderedSongDeletion = null
+let songRows = new Map()
+let renderedUsers = null
+let renderedUserRole = null
+let renderedUserPanel = null
+let renderedUserBusy = null
 
 const elements = {
     songActions: document.getElementById("song-actions"),
@@ -114,6 +149,12 @@ const elements = {
         "moderation-list-state"
     ),
     moderationList: document.getElementById("moderation-list"),
+    userPagination: {
+        container: document.getElementById("user-pagination"),
+        previous: document.getElementById("previous-user-page-button"),
+        next: document.getElementById("next-user-page-button"),
+        status: document.getElementById("user-page-status")
+    },
     newSongBookButton: document.getElementById("new-song-book-button"),
     refreshSongBooksButton: document.getElementById(
         "refresh-song-books-button"
@@ -123,6 +164,14 @@ const elements = {
     ),
     songBookListState: document.getElementById("song-book-list-state"),
     songBookList: document.getElementById("song-book-list"),
+    bookPagination: {
+        container: document.getElementById("song-book-pagination"),
+        previous: document.getElementById(
+            "previous-song-book-page-button"
+        ),
+        next: document.getElementById("next-song-book-page-button"),
+        status: document.getElementById("song-book-page-status")
+    },
     songBookForm: document.getElementById("song-book-form"),
     songBookFormHeading: document.getElementById(
         "song-book-form-heading"
@@ -155,6 +204,12 @@ const elements = {
     songBookAccessList: document.getElementById(
         "song-book-access-list"
     ),
+    memberPagination: {
+        container: document.getElementById("member-pagination"),
+        previous: document.getElementById("previous-member-page-button"),
+        next: document.getElementById("next-member-page-button"),
+        status: document.getElementById("member-page-status")
+    },
     songBookAccessForm: document.getElementById(
         "song-book-access-form"
     ),
@@ -173,6 +228,12 @@ const elements = {
     songListHeading: document.getElementById("song-list-heading"),
     songListState: document.getElementById("song-list-state"),
     songList: document.getElementById("song-list"),
+    songPagination: {
+        container: document.getElementById("song-pagination"),
+        previous: document.getElementById("previous-song-page-button"),
+        next: document.getElementById("next-song-page-button"),
+        status: document.getElementById("song-page-status")
+    },
     songDetails: document.getElementById("song-details"),
     songForm: document.getElementById("song-form"),
     songFormHeading: document.getElementById("song-form-heading"),
@@ -238,6 +299,22 @@ elements.refreshSongBooksButton.addEventListener(
     "click",
     () => loadSongBooks()
 )
+elements.bookPagination.previous.addEventListener(
+    "click",
+    () => loadSongBooks({
+        page: state.songBookPage - 1,
+        showSuccessNotice: false,
+        refreshMembers: false
+    })
+)
+elements.bookPagination.next.addEventListener(
+    "click",
+    () => loadSongBooks({
+        page: state.songBookPage + 1,
+        showSuccessNotice: false,
+        refreshMembers: false
+    })
+)
 elements.manageUsersButton.addEventListener(
     "click",
     openUserManagement
@@ -249,6 +326,14 @@ elements.closeModerationButton.addEventListener(
 elements.refreshManagedUsersButton.addEventListener(
     "click",
     loadManagedUsers
+)
+elements.userPagination.previous.addEventListener(
+    "click",
+    () => loadManagedUsers({ page: state.managedUserPage - 1 })
+)
+elements.userPagination.next.addEventListener(
+    "click",
+    () => loadManagedUsers({ page: state.managedUserPage + 1 })
 )
 elements.moderationList.addEventListener(
     "click",
@@ -283,10 +368,38 @@ elements.songBookAccessList.addEventListener("click", async event => {
         await requestSongBookMemberRemoval(accessId, event.target)
     }
 })
+elements.memberPagination.previous.addEventListener(
+    "click",
+    () => loadSongBookMembers({
+        page: state.memberPage - 1,
+        showErrorNotice: true
+    })
+)
+elements.memberPagination.next.addEventListener(
+    "click",
+    () => loadSongBookMembers({
+        page: state.memberPage + 1,
+        showErrorNotice: true
+    })
+)
 elements.newSongButton.addEventListener("click", beginCreateSong)
 elements.refreshSongsButton.addEventListener(
     "click",
     () => loadSongs()
+)
+elements.songPagination.previous.addEventListener(
+    "click",
+    () => loadSongs({
+        page: state.songPage - 1,
+        showSuccessNotice: false
+    })
+)
+elements.songPagination.next.addEventListener(
+    "click",
+    () => loadSongs({
+        page: state.songPage + 1,
+        showSuccessNotice: false
+    })
 )
 elements.songList.addEventListener("click", async event => {
     const songId = event.target.dataset?.songId
@@ -310,6 +423,10 @@ elements.songForm.addEventListener("submit", saveSong)
 elements.addPartButton.addEventListener("click", addPart)
 elements.cancelSongButton.addEventListener("click", cancelSongEditor)
 elements.partsEditor.addEventListener("input", updatePartDraft)
+elements.partsEditor.addEventListener("beforeinput", rememberPartTextEdit)
+elements.partsEditor.addEventListener("keyup", updateChordCursor)
+elements.partsEditor.addEventListener("select", updateChordCursor)
+elements.partsEditor.addEventListener("keydown", handleChordKeydown)
 elements.partsEditor.addEventListener("click", handlePartAction)
 elements.showLoginButton.addEventListener(
     "click",
@@ -784,7 +901,9 @@ export function closeUserManagement() {
     return true
 }
 
-export async function loadManagedUsers() {
+export async function loadManagedUsers({
+    page = state.managedUserPage
+} = {}) {
     if (
         !canModerateUsers() ||
         !state.showUserManagement ||
@@ -801,7 +920,7 @@ export async function loadManagedUsers() {
     renderUserManagement()
 
     try {
-        const users = readManagedUsers(await getManagedUsers())
+        const usersPage = await fetchAvailablePage(getManagedUsers, page)
         if (
             requestId !== managedUserListRequestId ||
             requestAuthGeneration !== authGeneration
@@ -809,7 +928,9 @@ export async function loadManagedUsers() {
             return false
         }
 
-        state.managedUsers = users
+        state.managedUsers = readManagedUsers(usersPage.items)
+        state.managedUserPage = usersPage.page
+        state.managedUserHasNext = usersPage.hasNext
         return true
     } catch (error) {
         if (
@@ -944,8 +1065,9 @@ async function handleManagedUserAction(event) {
         }
 
         try {
-            state.managedUsers = readManagedUsers(
-                await getManagedUsers()
+            const usersPage = await fetchAvailablePage(
+                getManagedUsers,
+                state.managedUserPage
             )
             if (
                 mutationId !== managedUserMutationId ||
@@ -954,6 +1076,9 @@ async function handleManagedUserAction(event) {
                 return false
             }
 
+            state.managedUsers = readManagedUsers(usersPage.items)
+            state.managedUserPage = usersPage.page
+            state.managedUserHasNext = usersPage.hasNext
             managedUserListLoadFailed = false
             setNotice("success", messages[action])
         } catch (error) {
@@ -1068,6 +1193,8 @@ function clearUserManagement() {
     managedUserMutationId += 1
     managedUserListLoadFailed = false
     state.managedUsers = []
+    state.managedUserPage = 1
+    state.managedUserHasNext = false
     state.showUserManagement = false
     state.isLoadingManagedUsers = false
     state.mutatingManagedUserId = null
@@ -1075,7 +1202,9 @@ function clearUserManagement() {
 
 export async function loadSongBooks({
     showSuccessNotice = true,
-    selectSongBookId = null
+    selectSongBookId = null,
+    page = state.songBookPage,
+    refreshMembers = true
 } = {}) {
     if (
         !isAuthenticated() ||
@@ -1104,7 +1233,7 @@ export async function loadSongBooks({
     let targetSongBookId = null
 
     try {
-        const loadedSongBooks = await getSongBooks()
+        const booksPage = await fetchAvailablePage(getSongBooks, page)
 
         if (
             requestId !== songBookListRequestId ||
@@ -1114,23 +1243,19 @@ export async function loadSongBooks({
             return false
         }
 
-        state.songBooks = Array.isArray(loadedSongBooks)
-            ? loadedSongBooks
-            : []
+        state.songBooks = booksPage.items
+        state.songBookPage = booksPage.page
+        state.songBookHasNext = booksPage.hasNext
 
-        const requestedBookExists = selectSongBookId !== null &&
-            state.songBooks.some(book => book.id === selectSongBookId)
-        const selectedBookStillExists =
-            state.selectedSongBookId !== null &&
-            state.songBooks.some(
-                book => book.id === state.selectedSongBookId
-            )
-
-        if (requestedBookExists) {
+        if (selectSongBookId !== null) {
             targetSongBookId = selectSongBookId
-        } else if (selectedBookStillExists) {
+        } else if (state.selectedSongBookId !== null) {
             targetSongBookId = state.selectedSongBookId
-        } else if (state.songBooks.length === 1) {
+        } else if (
+            state.songBookPage === 1 &&
+            !state.songBookHasNext &&
+            state.songBooks.length === 1
+        ) {
             targetSongBookId = state.songBooks[0].id
         } else {
             clearSelectedSongBook()
@@ -1177,26 +1302,67 @@ export async function loadSongBooks({
         )
         const canRefreshCurrentSelection =
             state.selectedSongBookId === targetSongBookId &&
-            state.selectedSongBook !== null &&
-            selectedSummary !== undefined
+            state.selectedSongBook !== null
 
         if (canRefreshCurrentSelection) {
-            state.selectedSongBook = {
-                ...state.selectedSongBook,
-                ...selectedSummary
-            }
-            state.selectedSongBookAccessLevel =
-                normalizeAccessLevel(selectedSummary.accessLevel)
-
-            if (isSongBookAdmin()) {
-                await loadSongBookMembers()
+            if (selectedSummary !== undefined) {
+                state.selectedSongBook = {
+                    ...state.selectedSongBook,
+                    ...selectedSummary
+                }
+                state.selectedSongBookAccessLevel =
+                    normalizeAccessLevel(selectedSummary.accessLevel)
             } else {
+                try {
+                    const refreshed = await getSongBook(targetSongBookId)
+                    if (
+                        requestId !== songBookListRequestId ||
+                        requestAuthGeneration !== authGeneration ||
+                        state.selectedSongBookId !== targetSongBookId
+                    ) {
+                        return false
+                    }
+
+                    state.selectedSongBook = refreshed
+                    state.selectedSongBookAccessLevel =
+                        normalizeAccessLevel(refreshed?.accessLevel)
+                } catch (error) {
+                    if (
+                        requestId !== songBookListRequestId ||
+                        requestAuthGeneration !== authGeneration ||
+                        state.selectedSongBookId !== targetSongBookId
+                    ) {
+                        return false
+                    }
+
+                    if (await handleSelectedBookFailure(error)) {
+                        return false
+                    }
+
+                    console.error(error)
+                    setNotice(
+                        "error",
+                        "The selected song book could not be verified. " +
+                            "Try Refresh song books."
+                    )
+                    renderNotice()
+                    return false
+                }
+            }
+
+            if (isSongBookAdmin() && refreshMembers) {
+                await loadSongBookMembers()
+            } else if (!isSongBookAdmin()) {
                 state.songBookMembers = []
+                state.memberPage = 1
+                state.memberHasNext = false
                 songBookMembersLoadFailed = false
             }
 
             renderSelectedSongBook()
-            renderSongBookMembers()
+            if (refreshMembers || !isSongBookAdmin()) {
+                renderSongBookMembers()
+            }
             renderSongList()
             renderSongDetails()
             renderMutationControls()
@@ -1259,22 +1425,11 @@ export async function selectSongBook(
     let loaded = false
 
     try {
-        const selectedSongBook = await getSongBook(requestedId)
-
-        if (
-            requestId !== songBookSelectionRequestId ||
-            requestAuthGeneration !== authGeneration ||
-            state.selectedSongBookId !== requestedId ||
-            !isAuthenticated()
-        ) {
-            return false
-        }
-
-        state.selectedSongBook = selectedSongBook
-        state.selectedSongBookAccessLevel =
-            normalizeAccessLevel(selectedSongBook?.accessLevel)
-
-        const loadedSongs = await getSongs(requestedId)
+        const [selectedSongBook, songsPageResponse] =
+            await Promise.all([
+                getSongBook(requestedId),
+                getSongs(requestedId)
+            ])
 
         if (
             requestId !== songBookSelectionRequestId ||
@@ -1286,9 +1441,23 @@ export async function selectSongBook(
             return false
         }
 
-        state.songs = Array.isArray(loadedSongs) ? loadedSongs : []
+        const songsPage = readPage(songsPageResponse, 1)
+        state.selectedSongBook = selectedSongBook
+        state.selectedSongBookAccessLevel =
+            normalizeAccessLevel(selectedSongBook?.accessLevel)
+        state.songs = songsPage.items
+        state.songPage = songsPage.page
+        state.songHasNext = songsPage.hasNext
         collectionLoadFailed = false
         loaded = true
+
+        state.isLoadingSongBook = false
+        state.isLoadingSongs = false
+        renderSongBookList()
+        renderSelectedSongBook()
+        renderSongList()
+        renderCollectionState()
+        renderMutationControls()
 
         if (isSongBookAdmin()) {
             await loadSongBookMembers({ showErrorNotice: true })
@@ -1624,7 +1793,8 @@ export async function requestSongBookDeletion() {
 }
 
 export async function loadSongBookMembers({
-    showErrorNotice = false
+    showErrorNotice = false,
+    page = state.memberPage
 } = {}) {
     if (
         !isSongBookAdmin() ||
@@ -1643,7 +1813,10 @@ export async function loadSongBookMembers({
     renderSongBookControls()
 
     try {
-        const members = await getSongBookAccess(songBookId)
+        const membersPage = await fetchAvailablePage(
+            requestedPage => getSongBookAccess(songBookId, requestedPage),
+            page
+        )
 
         if (
             requestId !== songBookMembersRequestId ||
@@ -1654,7 +1827,9 @@ export async function loadSongBookMembers({
             return false
         }
 
-        state.songBookMembers = Array.isArray(members) ? members : []
+        state.songBookMembers = membersPage.items
+        state.memberPage = membersPage.page
+        state.memberHasNext = membersPage.hasNext
         return true
     } catch (error) {
         if (
@@ -1750,7 +1925,6 @@ export async function saveSongBookMember(event) {
         }
 
         upsertSongBookMember(savedMember)
-        renderSongBookMembers()
         elements.songBookAccessEmail.value = ""
         elements.songBookAccessLevel.value = "reader"
         const membersReloaded = await loadSongBookMembers()
@@ -1779,6 +1953,15 @@ export async function saveSongBookMember(event) {
             try {
                 await getSongBook(songBookId)
             } catch (bookError) {
+                if (
+                    requestId !== songCollectionRequestId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== songBookId ||
+                    state.selectedSongId !== selectedId
+                ) {
+                    return false
+                }
+
                 if (await handleSelectedBookFailure(bookError)) {
                     return false
                 }
@@ -1911,63 +2094,98 @@ export async function requestSongBookMemberRemoval(
 }
 
 export function renderSongBookList() {
-    elements.songBookList.replaceChildren()
+    if (renderedBooks !== state.songBooks) {
+        const items = []
+        bookRows = new Map()
 
-    for (const songBook of state.songBooks) {
-        const listItem = document.createElement("li")
-        const selected = songBook.id === state.selectedSongBookId
-        listItem.className = selected
-            ? "song-book-list__item song-book-list__item--selected"
-            : "song-book-list__item"
+        for (const songBook of state.songBooks) {
+            const listItem = document.createElement("li")
+            listItem.className = "song-book-list__item"
 
-        const summary = document.createElement("span")
-        summary.className = "song-book-list__summary"
-        summary.textContent = displayValue(
-            songBook.name,
-            "Untitled song book"
-        )
+            const summary = document.createElement("span")
+            summary.className = "song-book-list__summary"
+            summary.textContent = displayValue(
+                songBook.name,
+                "Untitled song book"
+            )
 
-        const meta = document.createElement("span")
-        meta.className = "song-book-list__meta"
-        meta.textContent = `${formatAccessLevel(
-            songBook.accessLevel
-        )}, ${Number(songBook.songCount ?? 0)} songs`
+            const meta = document.createElement("span")
+            meta.className = "song-book-list__meta"
+            meta.textContent = `${formatAccessLevel(
+                songBook.accessLevel
+            )}, ${Number(songBook.songCount ?? 0)} songs`
 
-        const selectButton = document.createElement("button")
-        selectButton.className = "song-book-list__button"
-        selectButton.type = "button"
-        selectButton.dataset.action = "select-song-book"
-        selectButton.dataset.songBookId = songBook.id
-        selectButton.setAttribute(
-            "aria-label",
-            `${selected ? "Selected" : "Open"} ${summary.textContent}, ` +
-                meta.textContent
-        )
-        selectButton.disabled =
-            state.isLoadingSongBook ||
-            state.isLoadingSongs ||
-            state.isSavingSongBook ||
-            state.isSavingSongBookAccess ||
-            state.isSaving ||
-            state.deletingSongId !== null
-
-        if (selected) {
-            selectButton.setAttribute("aria-current", "true")
+            const selectButton = document.createElement("button")
+            selectButton.className = "song-book-list__button"
+            selectButton.type = "button"
+            selectButton.dataset.action = "select-song-book"
+            selectButton.dataset.songBookId = songBook.id
+            selectButton.setAttribute(
+                "aria-label",
+                `Open ${summary.textContent}, ${meta.textContent}`
+            )
+            selectButton.addEventListener("click", async event => {
+                await selectSongBook(event.currentTarget.dataset.songBookId, {
+                    focusHeading: true
+                })
+            })
+            selectButton.appendChild(summary)
+            selectButton.appendChild(meta)
+            listItem.appendChild(selectButton)
+            items.push(listItem)
+            bookRows.set(songBook.id, {
+                listItem,
+                selectButton,
+                label: `${summary.textContent}, ${meta.textContent}`
+            })
         }
 
-        selectButton.addEventListener("click", async event => {
-            await selectSongBook(event.currentTarget.dataset.songBookId, {
-                focusHeading: true
-            })
-        })
-        selectButton.appendChild(summary)
-        selectButton.appendChild(meta)
-        listItem.appendChild(selectButton)
-        elements.songBookList.appendChild(listItem)
+        elements.songBookList.replaceChildren(...items)
+        renderedBooks = state.songBooks
+        renderedBookSelection = null
+        renderedBookBusy = null
+    }
+
+    if (renderedBookSelection !== state.selectedSongBookId) {
+        for (const id of [renderedBookSelection, state.selectedSongBookId]) {
+            const row = bookRows.get(id)
+            if (row === undefined) {
+                continue
+            }
+
+            const selected = id === state.selectedSongBookId
+            row.listItem.className = selected
+                ? "song-book-list__item song-book-list__item--selected"
+                : "song-book-list__item"
+            row.selectButton.setAttribute(
+                "aria-label",
+                `${selected ? "Selected" : "Open"} ${row.label}`
+            )
+            if (selected) {
+                row.selectButton.setAttribute("aria-current", "true")
+            } else {
+                row.selectButton.removeAttribute("aria-current")
+            }
+        }
+        renderedBookSelection = state.selectedSongBookId
+    }
+
+    const busy = state.isLoadingSongBook ||
+        state.isLoadingSongs ||
+        state.isSavingSongBook ||
+        state.isSavingSongBookAccess ||
+        state.isSaving ||
+        state.deletingSongId !== null
+    if (renderedBookBusy !== busy) {
+        for (const row of bookRows.values()) {
+            row.selectButton.disabled = busy
+        }
+        renderedBookBusy = busy
     }
 }
 
 export function renderSongBookState() {
+    renderBookPageControls()
     elements.songBookList.setAttribute(
         "aria-busy",
         String(state.isLoadingSongBooks)
@@ -1992,7 +2210,9 @@ export function renderSongBookState() {
 
     if (state.songBooks.length === 0) {
         elements.songBookListState.textContent =
-            "No song books yet. Create the first one."
+            state.songBookPage === 1
+                ? "No song books yet. Create the first one."
+                : "No song books on this page. Go to a previous page."
         return
     }
 
@@ -2037,6 +2257,7 @@ export function renderSelectedSongBook() {
 }
 
 export function renderSongBookMembers() {
+    renderMemberPageControls()
     elements.songBookAccessList.replaceChildren()
     elements.songBookAccessState.textContent = ""
     elements.songBookAccessList.setAttribute(
@@ -2062,7 +2283,9 @@ export function renderSongBookMembers() {
 
     if (state.songBookMembers.length === 0) {
         elements.songBookAccessState.textContent =
-            "No collaborators."
+            state.memberPage === 1
+                ? "No collaborators."
+                : "No collaborators on this page. Go to a previous page."
         return
     }
 
@@ -2108,7 +2331,10 @@ export function renderSongBookMembers() {
     }
 }
 
-export async function loadSongs({ showSuccessNotice = true } = {}) {
+export async function loadSongs({
+    showSuccessNotice = true,
+    page = state.songPage
+} = {}) {
     if (
         state.isLoadingSongs ||
         state.selectedSongBookId === null ||
@@ -2131,7 +2357,10 @@ export async function loadSongs({ showSuccessNotice = true } = {}) {
     let focusListAfterLoad = false
 
     try {
-        const loadedSongs = await getSongs(songBookId)
+        const songsPage = await fetchAvailablePage(
+            requestedPage => getSongs(songBookId, requestedPage),
+            page
+        )
 
         if (
             requestId !== songCollectionRequestId ||
@@ -2142,22 +2371,97 @@ export async function loadSongs({ showSuccessNotice = true } = {}) {
             return false
         }
 
-        const normalizedSongs = Array.isArray(loadedSongs)
-            ? loadedSongs
-            : []
-        const selectionWasRemoved =
-            !state.isSaving &&
+        const selectedWasVisible =
             state.selectedSongId !== null &&
-            !normalizedSongs.some(
+            state.songs.some(
+                song => song.id === state.selectedSongId
+            )
+        const selectionMissingFromPage =
+            !state.isSaving &&
+            !state.isLoadingSong &&
+            songsPage.page === state.songPage &&
+            selectedWasVisible &&
+            state.selectedSongId !== null &&
+            !songsPage.items.some(
                 song => song.id === state.selectedSongId
             )
 
-        state.songs = normalizedSongs
+        state.songs = songsPage.items
+        state.songPage = songsPage.page
+        state.songHasNext = songsPage.hasNext
         collectionLoadFailed = false
 
-        if (selectionWasRemoved) {
-            focusListAfterLoad = state.editorMode !== "idle"
-            clearSelection()
+        let selectionWasRemoved = false
+        if (selectionMissingFromPage) {
+            const selectedId = state.selectedSongId
+            try {
+                const selectedSong = await getSong(songBookId, selectedId)
+                if (
+                    requestId !== songCollectionRequestId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== songBookId ||
+                    state.selectedSongId !== selectedId
+                ) {
+                    return false
+                }
+                if (selectedSong?.id !== selectedId) {
+                    throw new ApiError(
+                        "The API returned an invalid selected song."
+                    )
+                }
+                state.selectedSong = selectedSong
+            } catch (error) {
+                if (
+                    requestId !== songCollectionRequestId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== songBookId ||
+                    state.selectedSongId !== selectedId
+                ) {
+                    return false
+                }
+
+                if (error instanceof ApiError && error.status === 404) {
+                    try {
+                        const book = await getSongBook(songBookId)
+                        if (
+                            requestId !== songCollectionRequestId ||
+                            requestAuthGeneration !== authGeneration ||
+                            state.selectedSongBookId !== songBookId
+                        ) {
+                            return false
+                        }
+                        state.selectedSongBook = book
+                        state.selectedSongBookAccessLevel =
+                            normalizeAccessLevel(book?.accessLevel)
+                    } catch (bookError) {
+                        if (await handleSelectedBookFailure(bookError)) {
+                            return false
+                        }
+                        console.error(bookError)
+                        setNotice(
+                            "error",
+                            "Songs loaded, but the selected song " +
+                                "could not be verified. Try View again."
+                        )
+                        return false
+                    }
+
+                    selectionWasRemoved = true
+                    focusListAfterLoad = state.editorMode !== "idle"
+                    clearSelection()
+                } else {
+                    if (await handleSelectedBookFailure(error)) {
+                        return false
+                    }
+                    console.error(error)
+                    setNotice(
+                        "error",
+                        "Songs loaded, but the selected song " +
+                            "could not be verified. Try View again."
+                    )
+                    return false
+                }
+            }
         }
 
         if (showSuccessNotice) {
@@ -2220,10 +2524,14 @@ export async function selectSong(
 
     const songBookId = state.selectedSongBookId
     const requestedId = id
-    const requestId = ++songDetailRequestId
+    cancelSongDetailRequest()
+    const requestId = songDetailRequestId
+    const controller = new AbortController()
+    songDetailController = controller
     const requestAuthGeneration = authGeneration
     state.selectedSongId = requestedId
     state.selectedSong = null
+    state.showChords = true
     state.isLoadingSong = true
     setNotice(null)
     renderSongList()
@@ -2233,9 +2541,12 @@ export async function selectSong(
     let songLoaded = false
 
     try {
-        const song = await getSong(songBookId, requestedId)
+        const song = await getSong(songBookId, requestedId, {
+            signal: controller.signal
+        })
 
         if (
+            controller.signal.aborted ||
             requestId !== songDetailRequestId ||
             requestAuthGeneration !== authGeneration ||
             state.selectedSongBookId !== songBookId ||
@@ -2250,6 +2561,7 @@ export async function selectSong(
         return true
     } catch (error) {
         if (
+            controller.signal.aborted ||
             requestId !== songDetailRequestId ||
             requestAuthGeneration !== authGeneration ||
             state.selectedSongBookId !== songBookId ||
@@ -2299,6 +2611,10 @@ export async function selectSong(
         setNotice("error", getLoadSongErrorMessage(error))
         return false
     } finally {
+        if (songDetailController === controller) {
+            songDetailController = null
+        }
+
         if (
             requestId === songDetailRequestId &&
             state.selectedSongBookId === songBookId &&
@@ -2316,8 +2632,14 @@ export async function selectSong(
     }
 }
 
-export function clearSelection() {
+function cancelSongDetailRequest() {
     songDetailRequestId += 1
+    songDetailController?.abort()
+    songDetailController = null
+}
+
+export function clearSelection() {
+    cancelSongDetailRequest()
 
     if (state.editorMode !== "idle") {
         closeEditor()
@@ -2344,6 +2666,7 @@ export function beginCreateSong() {
     }
 
     state.editorMode = "create"
+    cancelSongDetailRequest()
     state.selectedSongId = null
     state.selectedSong = null
     state.isLoadingSong = false
@@ -2440,6 +2763,7 @@ export async function saveSong(event) {
     const mutationId = ++songMutationId
     const requestAuthGeneration = authGeneration
     let savedSongId = null
+    let createdSong = null
     let mutationSucceeded = false
 
     state.isSaving = true
@@ -2456,11 +2780,11 @@ export async function saveSong(event) {
 
     try {
         if (saveMode === "create") {
-            const createdSong = await createSong(
+            createdSong = await createSong(
                 selectedSongBookId,
                 payload
             )
-            savedSongId = createdSong.id
+            savedSongId = createdSong?.id ?? null
         } else {
             await updateSong(
                 selectedSongBookId,
@@ -2479,21 +2803,47 @@ export async function saveSong(event) {
             return false
         }
 
-        mutationSucceeded = true
-        closeEditor()
-        const collectionLoaded = await loadSongs({
-            showSuccessNotice: false
-        })
-
         if (
-            mutationId !== songMutationId ||
-            requestAuthGeneration !== authGeneration ||
-            state.selectedSongBookId !== selectedSongBookId
+            saveMode === "create" &&
+            (
+                typeof savedSongId !== "string" ||
+                savedSongId.trim() === "" ||
+                !Array.isArray(createdSong?.parts)
+            )
         ) {
+            console.error(new ApiError(
+                "The API returned an invalid created song."
+            ))
+            setNotice(
+                "error",
+                "The song may have been created, but the API returned " +
+                    "an invalid response. Refresh songs before trying again."
+            )
+            renderNotice()
             return false
         }
 
-        const detailLoaded = await selectSong(savedSongId)
+        mutationSucceeded = true
+        closeEditor()
+        let collectionLoaded
+        let detailLoaded
+        if (saveMode === "create") {
+            cancelSongDetailRequest()
+            state.selectedSongId = savedSongId
+            state.selectedSong = createdSong
+            state.isLoadingSong = false
+            renderSongList()
+            renderSongDetails()
+            collectionLoaded = await loadSongs({
+                showSuccessNotice: false
+            })
+            detailLoaded = true
+        } else {
+            [collectionLoaded, detailLoaded] = await Promise.all([
+                loadSongs({ showSuccessNotice: false }),
+                selectSong(savedSongId)
+            ])
+        }
 
         if (
             mutationId !== songMutationId ||
@@ -2722,58 +3072,114 @@ export async function requestSongDeletion(id, triggerButton = null) {
 }
 
 export function renderSongList(songs = state.songs) {
-    elements.songList.replaceChildren()
+    const writeAccess = canManageSongs()
+    if (renderedSongs !== songs ||
+        renderedSongWriteAccess !== writeAccess) {
+        const items = []
+        songRows = new Map()
 
-    for (const song of songs) {
-        const isSelected = song.id === state.selectedSongId
-        const listItem = document.createElement("li")
-        listItem.className = isSelected
-            ? "song-list__item song-list__item--selected"
-            : "song-list__item"
+        for (const song of songs) {
+            const listItem = document.createElement("li")
+            listItem.className = "song-list__item"
 
-        const summary = document.createElement("span")
-        summary.className = "song-list__summary"
-        summary.textContent = formatSongLabel(song)
+            const summary = document.createElement("span")
+            summary.className = "song-list__summary"
+            const label = formatSongLabel(song)
+            summary.textContent = label
 
-        const viewButton = document.createElement("button")
-        viewButton.className = "button button--neutral"
-        viewButton.type = "button"
-        viewButton.dataset.action = "view-song"
-        viewButton.dataset.songId = song.id
-        viewButton.disabled = state.isSaving
-        viewButton.textContent = "View"
-        viewButton.setAttribute(
+            const viewButton = document.createElement("button")
+            viewButton.className = "button button--neutral"
+            viewButton.type = "button"
+            viewButton.dataset.action = "view-song"
+            viewButton.dataset.songId = song.id
+            viewButton.textContent = "View"
+            viewButton.setAttribute("aria-label", `View ${label}`)
+
+            const actions = document.createElement("div")
+            actions.className = "song-list__actions"
+            actions.appendChild(viewButton)
+
+            let deleteButton = null
+            if (writeAccess) {
+                deleteButton = document.createElement("button")
+                deleteButton.className = "button button--destructive"
+                deleteButton.type = "button"
+                deleteButton.dataset.action = "delete-song"
+                deleteButton.dataset.songId = song.id
+                deleteButton.textContent = "Delete"
+                deleteButton.setAttribute(
+                    "aria-label",
+                    `Delete ${getDeletionSongName(song.id, song)}`
+                )
+                actions.appendChild(deleteButton)
+            }
+
+            listItem.appendChild(summary)
+            listItem.appendChild(actions)
+            items.push(listItem)
+            songRows.set(song.id, {
+                listItem,
+                viewButton,
+                deleteButton,
+                song
+            })
+        }
+
+        elements.songList.replaceChildren(...items)
+        renderedSongs = songs
+        renderedSongWriteAccess = writeAccess
+        renderedSongSelection = null
+        renderedSongSaving = null
+        renderedSongDeletion = null
+    }
+
+    if (renderedSongSelection !== state.selectedSongId) {
+        for (const id of [
+            renderedSongSelection,
+            state.selectedSongId
+        ]) {
+            const row = songRows.get(id)
+            if (row === undefined) {
+                continue
+            }
+
+            const selected = id === state.selectedSongId
+            row.listItem.className = selected
+                ? "song-list__item song-list__item--selected"
+                : "song-list__item"
+            if (selected) {
+                row.viewButton.setAttribute("aria-current", "true")
+            } else {
+                row.viewButton.removeAttribute("aria-current")
+            }
+        }
+        renderedSongSelection = state.selectedSongId
+    }
+
+    if (
+        renderedSongSaving !== state.isSaving ||
+        renderedSongDeletion !== state.deletingSongId
+    ) {
+        for (const [id, row] of songRows) {
+            row.viewButton.disabled = state.isSaving
+            if (row.deleteButton !== null) {
+                row.deleteButton.disabled =
+                    state.isSaving || state.deletingSongId === id
+            }
+        }
+        renderedSongSaving = state.isSaving
+        renderedSongDeletion = state.deletingSongId
+    }
+
+    const selected = songRows.get(state.selectedSongId)
+    if (selected?.deleteButton) {
+        selected.deleteButton.setAttribute(
             "aria-label",
-            `View ${formatSongLabel(song)}`
+            `Delete ${getDeletionSongName(
+                state.selectedSongId,
+                selected.song
+            )}`
         )
-
-        if (isSelected) {
-            viewButton.setAttribute("aria-current", "true")
-        }
-
-        const actions = document.createElement("div")
-        actions.className = "song-list__actions"
-        actions.appendChild(viewButton)
-
-        if (canManageSongs()) {
-            const deleteButton = document.createElement("button")
-            deleteButton.className = "button button--destructive"
-            deleteButton.type = "button"
-            deleteButton.dataset.action = "delete-song"
-            deleteButton.dataset.songId = song.id
-            deleteButton.disabled =
-                state.isSaving || state.deletingSongId === song.id
-            deleteButton.textContent = "Delete"
-            deleteButton.setAttribute(
-                "aria-label",
-                `Delete ${getDeletionSongName(song.id)}`
-            )
-            actions.appendChild(deleteButton)
-        }
-
-        listItem.appendChild(summary)
-        listItem.appendChild(actions)
-        elements.songList.appendChild(listItem)
     }
 }
 
@@ -2836,7 +3242,35 @@ export function renderSongDetails() {
     const partsHeading = document.createElement("h4")
     partsHeading.textContent = "Parts"
     partsSection.appendChild(partsHeading)
-    renderSongParts(partsSection, state.selectedSong.parts)
+
+    const hasChords = Array.isArray(state.selectedSong.parts) &&
+        state.selectedSong.parts.some(part => part.chords?.length > 0)
+    if (hasChords) {
+        const toggle = document.createElement("div")
+        toggle.className = "checkbox-field song-details__chord-toggle"
+        const checkbox = document.createElement("input")
+        checkbox.id = "show-song-chords"
+        checkbox.type = "checkbox"
+        checkbox.checked = state.showChords
+        checkbox.addEventListener("change", event => {
+            state.showChords = event.currentTarget.checked
+            renderSongDetails()
+            findDescendant(elements.songDetails, element =>
+                element.id === "show-song-chords"
+            )?.focus()
+        })
+        const label = document.createElement("label")
+        label.setAttribute("for", checkbox.id)
+        label.textContent = "Show chords"
+        toggle.appendChild(checkbox)
+        toggle.appendChild(label)
+        partsSection.appendChild(toggle)
+    }
+    renderSongParts(
+        partsSection,
+        state.selectedSong.parts,
+        hasChords && state.showChords
+    )
 
     if (canManageSongs()) {
         const editButton = document.createElement("button")
@@ -2957,6 +3391,10 @@ export function renderUserManagement() {
     const active = state.showUserManagement && canModerateUsers()
     const busy = state.isLoadingManagedUsers ||
         state.mutatingManagedUserId !== null
+    const rebuild = renderedUsers !== state.managedUsers ||
+        renderedUserRole !== state.auth.role ||
+        renderedUserPanel !== active
+    renderUserPageControls()
     elements.moderationPanel.hidden = !active
     elements.songActions.hidden = active
     elements.songBooksPanel.hidden = active
@@ -2965,7 +3403,13 @@ export function renderUserManagement() {
     elements.refreshManagedUsersButton.disabled = busy
     elements.closeModerationButton.disabled =
         state.mutatingManagedUserId !== null
-    elements.moderationList.replaceChildren()
+    if (rebuild) {
+        elements.moderationList.replaceChildren()
+        renderedUsers = state.managedUsers
+        renderedUserRole = state.auth.role
+        renderedUserPanel = active
+        renderedUserBusy = null
+    }
 
     if (!active) {
         elements.moderationListState.textContent = ""
@@ -2980,103 +3424,121 @@ export function renderUserManagement() {
             "Users could not be loaded. Try Refresh users."
     } else if (state.managedUsers.length === 0) {
         elements.moderationListState.textContent =
-            "No other users."
+            state.managedUserPage === 1
+                ? "No other users."
+                : "No users on this page. Go to a previous page."
     } else {
         elements.moderationListState.textContent = ""
     }
 
-    for (const user of state.managedUsers) {
-        const item = document.createElement("li")
-        item.className = "moderation-list__item"
+    if (rebuild) {
+        for (const user of state.managedUsers) {
+            const item = document.createElement("li")
+            item.className = "moderation-list__item"
 
-        const summary = document.createElement("span")
-        summary.className = "moderation-list__summary"
-        const email = document.createElement("strong")
-        email.textContent = displayValue(user.email, "Account without email")
-        const status = document.createElement("span")
-        status.textContent = `${user.role === "superuser"
-            ? "SuperUser"
-            : user.role === "moderator"
-                ? "Moderator"
-                : "User"} - ${user.isBanned
-            ? "Banned"
-            : user.emailConfirmed
-                ? "Active"
-                : "Unconfirmed"}`
-        summary.appendChild(email)
-        summary.appendChild(status)
-        item.appendChild(summary)
-
-        const canManageTarget = user.role !== "superuser" &&
-            (
-                state.auth.role === "superuser" ||
-                user.role === "user"
+            const summary = document.createElement("span")
+            summary.className = "moderation-list__summary"
+            const email = document.createElement("strong")
+            email.textContent = displayValue(
+                user.email,
+                "Account without email"
             )
+            const status = document.createElement("span")
+            status.textContent = `${user.role === "superuser"
+                ? "SuperUser"
+                : user.role === "moderator"
+                    ? "Moderator"
+                    : "User"} - ${user.isBanned
+                ? "Banned"
+                : user.emailConfirmed
+                    ? "Active"
+                    : "Unconfirmed"}`
+            summary.appendChild(email)
+            summary.appendChild(status)
+            item.appendChild(summary)
 
-        if (canManageTarget) {
-            const actions = document.createElement("div")
-            actions.className = "moderation-list__actions"
-
-            if (state.auth.role === "superuser" &&
+            const canManageTarget = user.role !== "superuser" &&
                 (
-                    user.role === "moderator" ||
-                    (!user.isBanned && user.emailConfirmed)
-                )) {
-                const roleButton = document.createElement("button")
-                roleButton.className = "button button--neutral"
-                roleButton.type = "button"
-                roleButton.dataset.action = user.role === "moderator"
-                    ? "remove-moderator"
-                    : "grant-moderator"
-                roleButton.dataset.userId = user.id
-                roleButton.textContent = user.role === "moderator"
-                    ? "Remove moderator"
-                    : "Make moderator"
-                roleButton.disabled = busy
-                roleButton.setAttribute(
-                    "aria-label",
-                    `${roleButton.textContent}: ${email.textContent}`
+                    state.auth.role === "superuser" ||
+                    user.role === "user"
                 )
-                actions.appendChild(roleButton)
+
+            if (canManageTarget) {
+                const actions = document.createElement("div")
+                actions.className = "moderation-list__actions"
+
+                if (state.auth.role === "superuser" &&
+                    (
+                        user.role === "moderator" ||
+                        (!user.isBanned && user.emailConfirmed)
+                    )) {
+                    const roleButton = document.createElement("button")
+                    roleButton.className = "button button--neutral"
+                    roleButton.type = "button"
+                    roleButton.dataset.action = user.role === "moderator"
+                        ? "remove-moderator"
+                        : "grant-moderator"
+                    roleButton.dataset.userId = user.id
+                    roleButton.textContent = user.role === "moderator"
+                        ? "Remove moderator"
+                        : "Make moderator"
+                    roleButton.disabled = busy
+                    roleButton.setAttribute(
+                        "aria-label",
+                        `${roleButton.textContent}: ${email.textContent}`
+                    )
+                    actions.appendChild(roleButton)
+                }
+
+                const banButton = document.createElement("button")
+                banButton.className = user.isBanned
+                    ? "button button--neutral"
+                    : "button button--destructive"
+                banButton.type = "button"
+                banButton.dataset.action = user.isBanned
+                    ? "unban-user"
+                    : "ban-user"
+                banButton.dataset.userId = user.id
+                banButton.textContent = user.isBanned ? "Unban" : "Ban"
+                banButton.disabled = busy
+                banButton.setAttribute(
+                    "aria-label",
+                    `${banButton.textContent}: ${email.textContent}`
+                )
+                actions.appendChild(banButton)
+
+                const deleteButton = document.createElement("button")
+                deleteButton.className = "button button--destructive"
+                deleteButton.type = "button"
+                deleteButton.dataset.action = "delete-user"
+                deleteButton.dataset.userId = user.id
+                deleteButton.textContent = "Delete user"
+                deleteButton.disabled = busy
+                deleteButton.setAttribute(
+                    "aria-label",
+                    `Delete user: ${email.textContent}`
+                )
+                actions.appendChild(deleteButton)
+                item.appendChild(actions)
             }
 
-            const banButton = document.createElement("button")
-            banButton.className = user.isBanned
-                ? "button button--neutral"
-                : "button button--destructive"
-            banButton.type = "button"
-            banButton.dataset.action = user.isBanned
-                ? "unban-user"
-                : "ban-user"
-            banButton.dataset.userId = user.id
-            banButton.textContent = user.isBanned ? "Unban" : "Ban"
-            banButton.disabled = busy
-            banButton.setAttribute(
-                "aria-label",
-                `${banButton.textContent}: ${email.textContent}`
-            )
-            actions.appendChild(banButton)
-
-            const deleteButton = document.createElement("button")
-            deleteButton.className = "button button--destructive"
-            deleteButton.type = "button"
-            deleteButton.dataset.action = "delete-user"
-            deleteButton.dataset.userId = user.id
-            deleteButton.textContent = "Delete user"
-            deleteButton.disabled = busy
-            deleteButton.setAttribute(
-                "aria-label",
-                `Delete user: ${email.textContent}`
-            )
-            actions.appendChild(deleteButton)
-            item.appendChild(actions)
+            elements.moderationList.appendChild(item)
         }
+    }
 
-        elements.moderationList.appendChild(item)
+    if (renderedUserBusy !== busy) {
+        for (const button of findDescendants(
+            elements.moderationList,
+            element => element.tagName === "BUTTON"
+        )) {
+            button.disabled = busy
+        }
+        renderedUserBusy = busy
     }
 }
 
 export function renderCollectionState() {
+    renderSongPageControls()
     elements.refreshSongsButton.disabled =
         state.isLoadingSongs ||
         state.selectedSongBookId === null ||
@@ -3119,9 +3581,11 @@ export function renderCollectionState() {
 
     if (state.songs.length === 0) {
         elements.songListState.textContent =
-            canManageSongs()
-                ? "No songs yet. Create the first one."
-                : "No songs yet."
+            state.songPage > 1
+                ? "No songs on this page. Go to a previous page."
+                : canManageSongs()
+                    ? "No songs yet. Create the first one."
+                    : "No songs yet."
         return
     }
 
@@ -3185,6 +3649,23 @@ function addPart() {
     findPartControl(draftPart.clientKey, "name")?.focus()
 }
 
+function rememberPartTextEdit(event) {
+    if (event.target.dataset?.partField !== "text") {
+        return
+    }
+
+    const draftPart = state.draftParts.find(
+        part => part.clientKey === event.target.dataset.partKey
+    )
+    if (draftPart !== undefined) {
+        draftPart.pendingTextEdit = {
+            start: event.target.selectionStart,
+            end: event.target.selectionEnd,
+            inputType: event.inputType
+        }
+    }
+}
+
 function updatePartDraft(event) {
     if (isSelectedSongDeleting()) {
         return
@@ -3195,7 +3676,9 @@ function updatePartDraft(event) {
 
     if (
         partKey === undefined ||
-        (partField !== "name" && partField !== "text")
+        (partField !== "name" &&
+            partField !== "text" &&
+            partField !== "chord")
     ) {
         return
     }
@@ -3204,13 +3687,95 @@ function updatePartDraft(event) {
         part => part.clientKey === partKey
     )
 
+    if (draftPart === undefined) {
+        return
+    }
+
+    if (partField === "name") {
+        draftPart.name = event.target.value
+        return
+    }
+    if (partField === "chord") {
+        draftPart.chordInput = event.target.value
+        return
+    }
+
+    const previousText = draftPart.text
+    const nextText = event.target.value
+    if (previousText !== nextText) {
+        if (draftPart.chords?.length > 0) {
+            const changed = adjustChordsForTextEdit(
+                draftPart.chords,
+                previousText,
+                nextText,
+                draftPart.pendingTextEdit
+            )
+            draftPart.chords = changed.chords
+            draftPart.chordsEdited = true
+            draftPart.chordMessage = changed.removedCount > 0
+                ? `${changed.removedCount} chord${changed.removedCount === 1
+                    ? " was"
+                    : "s were"} removed because the anchored lyric changed.`
+                : ""
+        } else {
+            draftPart.chordMessage = ""
+        }
+    }
+    draftPart.text = nextText
+    draftPart.pendingTextEdit = null
+    draftPart.selectedOffset = isChordAnchor(
+        nextText, event.target.selectionStart
+    ) ? event.target.selectionStart : null
+    refreshChordEditor(draftPart)
+}
+
+function updateChordCursor(event) {
+    if (event.target.dataset?.partField !== "text") {
+        return
+    }
+
+    const draftPart = state.draftParts.find(
+        part => part.clientKey === event.target.dataset.partKey
+    )
+    if (draftPart === undefined) {
+        return
+    }
+
+    const offset = event.target.selectionStart
+    draftPart.selectedOffset = isChordAnchor(draftPart.text, offset)
+        ? offset
+        : null
+    draftPart.chordMessage = ""
+    refreshChordEditor(draftPart)
+}
+
+function handleChordKeydown(event) {
+    if (event.key !== "Enter" ||
+        event.target.dataset?.partField !== "chord") {
+        return
+    }
+
+    event.preventDefault()
+    if (state.isSaving || isSelectedSongDeleting()) {
+        return
+    }
+
+    const partKey = event.target.dataset.partKey
+    const draftPart = state.draftParts.find(
+        part => part.clientKey === partKey
+    )
     if (draftPart !== undefined) {
-        draftPart[partField] = event.target.value
+        setPartChord(draftPart, partKey)
     }
 }
 
 function handlePartAction(event) {
     if (state.isSaving || isSelectedSongDeleting()) {
+        return
+    }
+
+    if (event.target.dataset?.partField === "text") {
+        updateChordCursor(event)
         return
     }
 
@@ -3226,6 +3791,42 @@ function handlePartAction(event) {
     )
 
     if (partIndex === -1) {
+        return
+    }
+
+    const draftPart = state.draftParts[partIndex]
+    if (action === "set-chord") {
+        setPartChord(draftPart, partKey)
+        return
+    }
+
+    if (action === "remove-chord") {
+        draftPart.chords = (draftPart.chords ?? []).filter(
+            chord => chord.offset !== draftPart.selectedOffset
+        )
+        draftPart.chordsEdited = true
+        draftPart.chordMessage = ""
+        refreshChordEditor(draftPart)
+        findPartControl(partKey, "chord")?.focus()
+        return
+    }
+
+    if (action === "select-chord") {
+        const offset = Number(event.target.dataset.offset)
+        const chord = draftPart.chords?.find(
+            item => item.offset === offset
+        )
+        if (chord === undefined) {
+            draftPart.chordMessage =
+                "That chord is no longer attached to this part."
+        } else {
+            draftPart.selectedOffset = offset
+            draftPart.chordMessage = ""
+            draftPart.chordInput = chord.symbol
+            findPartControl(partKey, "chord").value = chord.symbol
+            findPartControl(partKey, "chord").focus()
+        }
+        refreshChordEditor(draftPart)
         return
     }
 
@@ -3249,9 +3850,39 @@ function handlePartAction(event) {
         return
     }
 
-    const [draftPart] = state.draftParts.splice(partIndex, 1)
-    state.draftParts.splice(targetIndex, 0, draftPart)
+    const [movedPart] = state.draftParts.splice(partIndex, 1)
+    state.draftParts.splice(targetIndex, 0, movedPart)
     renderDraftParts()
+}
+
+function setPartChord(draftPart, partKey) {
+    const input = findPartControl(partKey, "chord")
+    draftPart.chordInput = input.value
+    const symbol = input.value.trim()
+    if (!isChordAnchor(draftPart.text, draftPart.selectedOffset)) {
+        draftPart.chordMessage =
+            "Place the cursor before a lyric character, not a line break."
+        findPartControl(partKey, "text")?.focus()
+    } else if (symbol.length === 0 || symbol.length > 64) {
+        draftPart.chordMessage =
+            "Enter a chord symbol of 1 to 64 characters."
+        input.focus()
+    } else {
+        draftPart.chords = (draftPart.chords ?? []).filter(
+            chord => chord.offset !== draftPart.selectedOffset
+        )
+        draftPart.chords.push({
+            offset: draftPart.selectedOffset,
+            symbol
+        })
+        draftPart.chords.sort((a, b) => a.offset - b.offset)
+        draftPart.chordsEdited = true
+        draftPart.chordMessage = ""
+        draftPart.chordInput = ""
+        input.value = ""
+        input.focus()
+    }
+    refreshChordEditor(draftPart)
 }
 
 function renderDraftParts() {
@@ -3259,7 +3890,17 @@ function renderDraftParts() {
     renderMutationControls()
 }
 
+function refreshChordEditor(draftPart) {
+    const fieldset = Array.from(elements.partsEditor.children).find(
+        item => item.dataset.partKey === draftPart.clientKey
+    )
+    if (fieldset !== undefined) {
+        renderChordEditor(fieldset, draftPart)
+    }
+}
+
 function renderMutationControls() {
+    renderSongPageControls()
     const formBusy = state.isSaving || isSelectedSongDeleting()
     const formLocked =
         formBusy ||
@@ -3302,6 +3943,8 @@ function renderMutationControls() {
 }
 
 function renderSongBookControls() {
+    renderBookPageControls()
+    renderMemberPageControls()
     const authenticated = isAuthenticated()
     const savingBook = state.isSavingSongBook
     const savingAccess = state.isSavingSongBookAccess
@@ -3374,6 +4017,55 @@ function renderSongBookControls() {
     }
 }
 
+function renderBookPageControls() {
+    renderPageControls(elements.bookPagination, {
+        page: state.songBookPage,
+        hasNext: state.songBookHasNext,
+        busy: state.isLoadingSongBooks ||
+            state.isLoadingSongBook ||
+            state.isLoadingSongs ||
+            state.isSavingSongBook ||
+            state.isSavingSongBookAccess ||
+            state.isSaving ||
+            state.deletingSongId !== null,
+        available: isAuthenticated()
+    })
+}
+
+function renderSongPageControls() {
+    renderPageControls(elements.songPagination, {
+        page: state.songPage,
+        hasNext: state.songHasNext,
+        busy: state.isLoadingSongs ||
+            state.isSaving ||
+            state.deletingSongId !== null,
+        available: isAuthenticated() &&
+            state.selectedSongBookId !== null
+    })
+}
+
+function renderMemberPageControls() {
+    renderPageControls(elements.memberPagination, {
+        page: state.memberPage,
+        hasNext: state.memberHasNext,
+        busy: state.isLoadingSongBookMembers ||
+            state.isSavingSongBookAccess ||
+            state.isSaving ||
+            state.deletingSongId !== null,
+        available: isSongBookAdmin()
+    })
+}
+
+function renderUserPageControls() {
+    renderPageControls(elements.userPagination, {
+        page: state.managedUserPage,
+        hasNext: state.managedUserHasNext,
+        busy: state.isLoadingManagedUsers ||
+            state.mutatingManagedUserId !== null,
+        available: state.showUserManagement && canModerateUsers()
+    })
+}
+
 function findPartControl(clientKey, fieldName) {
     return findDescendant(
         elements.partsEditor,
@@ -3435,7 +4127,7 @@ function appendDetailValue(container, label, value) {
     container.appendChild(field)
 }
 
-function renderSongParts(container, parts) {
+function renderSongParts(container, parts, showChords = false) {
     if (!Array.isArray(parts) || parts.length === 0) {
         const emptyState = document.createElement("p")
         emptyState.textContent = "No parts"
@@ -3453,9 +4145,18 @@ function renderSongParts(container, parts) {
         const partName = document.createElement("h5")
         partName.textContent = displayValue(part.name, "Unnamed part")
 
-        const partText = document.createElement("p")
+        const partText = document.createElement("div")
         partText.className = "song-part__text"
-        partText.textContent = displayValue(part.text)
+        if (showChords && part.chords?.length > 0) {
+            partText.className += " chorded-text"
+            renderChordedText(partText, part.text ?? "", part.chords)
+        } else {
+            partText.textContent = part.text === null ||
+                part.text === undefined ||
+                part.text === ""
+                ? "Not provided"
+                : String(part.text)
+        }
 
         partItem.appendChild(partName)
         partItem.appendChild(partText)
@@ -3496,10 +4197,10 @@ function isSelectedSongDeleting() {
         state.deletingSongId === state.selectedSongId
 }
 
-function getDeletionSongName(id) {
+function getDeletionSongName(id, summary = null) {
     const song = state.selectedSong?.id === id
         ? state.selectedSong
-        : state.songs.find(item => item.id === id) ?? null
+        : summary ?? state.songs.find(item => item.id === id) ?? null
     const title = song?.title
     return hasDisplayValue(title)
         ? String(title).trim()
@@ -3715,7 +4416,7 @@ function closeSongBookEditor() {
 
 function clearSongState({ preserveEditor = false } = {}) {
     songCollectionRequestId += 1
-    songDetailRequestId += 1
+    cancelSongDetailRequest()
     songMutationId += 1
 
     if (!preserveEditor && state.editorMode !== "idle") {
@@ -3723,6 +4424,8 @@ function clearSongState({ preserveEditor = false } = {}) {
     }
 
     state.songs = []
+    state.songPage = 1
+    state.songHasNext = false
     state.selectedSongId = null
     state.selectedSong = null
     state.isLoadingSongs = false
@@ -3741,6 +4444,8 @@ function clearSelectedSongBook({ preserveEditor = false } = {}) {
     state.selectedSongBook = null
     state.selectedSongBookAccessLevel = null
     state.songBookMembers = []
+    state.memberPage = 1
+    state.memberHasNext = false
     state.isLoadingSongBook = false
     state.isLoadingSongBookMembers = false
     state.isSavingSongBookAccess = false
@@ -3753,6 +4458,8 @@ function clearPrivateState({ preserveEditor = false } = {}) {
     songBookListRequestId += 1
     songBookMutationId += 1
     state.songBooks = []
+    state.songBookPage = 1
+    state.songBookHasNext = false
     state.isLoadingSongBooks = false
     state.isSavingSongBook = false
     songBookListLoadFailed = false
@@ -3790,12 +4497,13 @@ function upsertSongBookSummary(songBook) {
     )
 
     if (index === -1) {
-        state.songBooks.push(songBook)
+        state.songBooks = [...state.songBooks, songBook]
     } else {
-        state.songBooks[index] = {
-            ...state.songBooks[index],
-            ...songBook
-        }
+        state.songBooks = state.songBooks.map((candidate, position) =>
+            position === index
+                ? { ...candidate, ...songBook }
+                : candidate
+        )
     }
 }
 
@@ -3879,15 +4587,6 @@ async function restorePreservedSongDraft() {
         typeof state.auth.email !== "string" ||
         draft.accountEmail.toLowerCase() !== state.auth.email.toLowerCase()
     ) {
-        preservedSongDraft = null
-        return false
-    }
-
-    const bookIsAccessible = state.songBooks.some(
-        songBook => songBook.id === draft.songBookId
-    )
-
-    if (!bookIsAccessible) {
         preservedSongDraft = null
         return false
     }

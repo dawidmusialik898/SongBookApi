@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SongBookApi.Domain;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Repositories;
 using SongBookApi.Infrastructure.Identity;
@@ -7,20 +8,23 @@ namespace SongBookApi.Infrastructure.Repositories;
 
 public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongRepository
 {
-    public async Task<IReadOnlyList<Song>> GetAllAsync(Guid songBookId) =>
-        await dbContext.Songs
+    public async Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page) =>
+        Paging.FromLookahead(await dbContext.Songs
             .AsNoTracking()
             .Where(song => song.SongBookId == songBookId)
-            .Include(song => song.Parts.OrderBy(part => part.Position))
             .OrderBy(song => song.Title)
             .ThenBy(song => song.Id)
-            .ToListAsync();
+            .Skip(Paging.Offset(page))
+            .Take(Paging.Size + 1)
+            .Select(song => new SongSummary(song.Id, song.Title, song.Author, song.Number))
+            .ToListAsync(), page);
 
     public async Task<Song?> GetByIdAsync(Guid songBookId, Guid songId) =>
         await dbContext.Songs
             .AsNoTracking()
             .Where(song => song.SongBookId == songBookId && song.Id == songId)
             .Include(song => song.Parts.OrderBy(part => part.Position))
+            .ThenInclude(part => part.Chords)
             .SingleOrDefaultAsync();
 
     public async Task<Song> AddAsync(Guid songBookId, Song song)
@@ -36,6 +40,11 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             part.Id = part.Id == Guid.Empty ? Guid.NewGuid() : part.Id;
             part.SongId = song.Id;
             part.Position = position;
+            part.Chords ??= [];
+            foreach (Chord chord in part.Chords)
+            {
+                chord.PartId = part.Id;
+            }
         }
 
         dbContext.Songs.Add(song);
@@ -47,6 +56,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
     {
         Song? song = await dbContext.Songs
             .Include(candidate => candidate.Parts)
+            .ThenInclude(part => part.Chords)
             .SingleOrDefaultAsync(candidate =>
                 candidate.SongBookId == songBookId && candidate.Id == songId);
         if (song is null)
@@ -90,7 +100,43 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             }
 
             target.Name = requested.Name;
+            if (requested.Chords is null && target.Chords?.Count > 0 &&
+                target.Text != requested.Text)
+            {
+                throw new ArgumentException(
+                    "Submit chords when changing lyrics in a part that already has chords.",
+                    nameof(replacement));
+            }
             target.Text = requested.Text;
+            if (requested.Chords is not null)
+            {
+                target.Chords ??= [];
+                Dictionary<int, Chord> existingChords =
+                    target.Chords.ToDictionary(chord => chord.Offset);
+                HashSet<int> requestedOffsets = [];
+                foreach (Chord chord in requested.Chords)
+                {
+                    requestedOffsets.Add(chord.Offset);
+                    if (existingChords.TryGetValue(chord.Offset, out Chord? savedChord))
+                    {
+                        savedChord.Symbol = chord.Symbol;
+                    }
+                    else
+                    {
+                        target.Chords.Add(new Chord
+                        {
+                            PartId = target.Id,
+                            Offset = chord.Offset,
+                            Symbol = chord.Symbol
+                        });
+                    }
+                }
+                foreach (Chord removed in existingChords.Values
+                    .Where(chord => !requestedOffsets.Contains(chord.Offset)))
+                {
+                    dbContext.Chords.Remove(removed);
+                }
+            }
             target.Position = position;
             finalParts.Add(target);
         }

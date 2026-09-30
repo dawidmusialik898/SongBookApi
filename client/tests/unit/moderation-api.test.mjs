@@ -30,9 +30,12 @@ test("moderation requests are relative and authenticated mutations use CSRF", as
         }
 
         if (url === "/admin/users") {
-            return new Response("[]", {
+            return new Response(
+                JSON.stringify({ items: [], page: 1, hasNext: false }),
+                {
                 headers: { "Content-Type": "application/json" }
-            })
+                }
+            )
         }
 
         return new Response(null, { status: 204 })
@@ -40,7 +43,11 @@ test("moderation requests are relative and authenticated mutations use CSRF", as
 
     try {
         resetAntiforgeryToken()
-        assert.deepEqual(await getManagedUsers(), [])
+        assert.deepEqual(await getManagedUsers(), {
+            items: [],
+            page: 1,
+            hasNext: false
+        })
         await setManagedUserRole("user-1", "moderator")
         await setManagedUserBan("user-1", true)
         await deleteManagedUser("user-1")

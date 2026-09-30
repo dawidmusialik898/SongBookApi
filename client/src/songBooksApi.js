@@ -1,4 +1,5 @@
 import { request } from "./httpClient.js"
+import { pageUrl } from "./pagination.js"
 
 const SONG_BOOKS_API_URL = "/songbooks"
 
@@ -25,8 +26,8 @@ function getSongBookAccessUrl(songBookId) {
     return `${getSongBookUrl(songBookId)}/access`
 }
 
-export function getSongBooks() {
-    return request(SONG_BOOKS_API_URL)
+export function getSongBooks(page = 1) {
+    return request(pageUrl(SONG_BOOKS_API_URL, page))
 }
 
 export function createSongBook(payload) {
@@ -53,8 +54,8 @@ export function deleteSongBook(songBookId) {
     })
 }
 
-export function getSongBookAccess(songBookId) {
-    return request(getSongBookAccessUrl(songBookId))
+export function getSongBookAccess(songBookId, page = 1) {
+    return request(pageUrl(getSongBookAccessUrl(songBookId), page))
 }
 
 export function setSongBookAccess(songBookId, payload) {

@@ -16,14 +16,14 @@ public sealed record SongBookCollaborator(
 
 public interface ISongBookRepository
 {
-    Task<IReadOnlyList<AccessibleSongBook>> ListAccessibleAsync(string userId);
+    Task<PageResult<AccessibleSongBook>> ListAccessibleAsync(string userId, int page);
     Task<AccessibleSongBook?> GetAccessibleAsync(Guid bookId, string userId);
     Task<SongBook?> GetByIdAsync(Guid bookId);
     Task<bool> OwnerHasNameAsync(string ownerId, string normalizedName, Guid? exceptBookId = null);
     Task<SongBook> AddAsync(SongBook songBook);
     Task RenameAsync(SongBook songBook, string name, string normalizedName, DateTimeOffset updatedAtUtc);
     Task DeleteAsync(SongBook songBook);
-    Task<IReadOnlyList<SongBookCollaborator>> ListAccessAsync(Guid bookId);
+    Task<PageResult<SongBookCollaborator>> ListAccessAsync(Guid bookId, int page);
     Task<SongBookAccess?> FindAccessAsync(Guid bookId, string userId);
     Task<SongBookAccess> UpsertAccessAsync(
         Guid bookId,

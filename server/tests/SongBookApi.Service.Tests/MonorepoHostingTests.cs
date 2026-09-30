@@ -23,6 +23,7 @@ public sealed class MonorepoHostingTests
         Assert.Equal(expectedClientRoot, Path.GetFullPath(configuredClientRoot, contentRoot));
         Assert.True(File.Exists(Path.Combine(expectedClientRoot, "index.html")));
         Assert.True(File.Exists(Path.Combine(expectedClientRoot, "src", "main.js")));
+        Assert.True(File.Exists(Path.Combine(expectedClientRoot, "src", "pagination.js")));
         Assert.True(File.Exists(Path.Combine(expectedClientRoot, "styles", "app.css")));
     }
 }

@@ -36,6 +36,9 @@ X-CSRF-TOKEN: {{csrf}}
 ### List accessible private books.
 GET {{host}}/songbooks
 
+### Next page of book summaries (50 per page).
+GET {{host}}/songbooks?page=2
+
 ### Create a private book.
 POST {{host}}/songbooks
 Content-Type: application/json
@@ -70,12 +73,18 @@ X-CSRF-TOKEN: {{csrf}}
 ### List collaborators (owner/Admin only).
 GET {{host}}/songbooks/{{bookId}}/access
 
+### Next page of collaborators (owner/Admin only).
+GET {{host}}/songbooks/{{bookId}}/access?page=2
+
 ### Remove collaborator (owner/Admin only).
 DELETE {{host}}/songbooks/{{bookId}}/access/{{accessId}}
 X-CSRF-TOKEN: {{csrf}}
 
 ### List songs (Reader+).
 GET {{host}}/songbooks/{{bookId}}/songs
+
+### Next page of song summaries, without lyrics (Reader+).
+GET {{host}}/songbooks/{{bookId}}/songs?page=2
 
 ### Create song (Editor+).
 POST {{host}}/songbooks/{{bookId}}/songs
@@ -92,7 +101,11 @@ X-CSRF-TOKEN: {{csrf}}
   "parts": [
     {
       "name": "Verse 1",
-      "text": "..."
+      "text": "Amazing grace",
+      "chords": [
+        { "offset": 0, "symbol": "G" },
+        { "offset": 8, "symbol": "D7" }
+      ]
     }
   ]
 }
@@ -116,7 +129,8 @@ X-CSRF-TOKEN: {{csrf}}
     {
       "id": "replace-with-existing-part-id",
       "name": "Verse 1",
-      "text": "Updated text"
+      "text": "Updated text",
+      "chords": []
     },
     {
       "name": "Chorus",

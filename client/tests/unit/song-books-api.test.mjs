@@ -20,13 +20,13 @@ test("songBooksApi exports the complete nested resource contract", () => {
 test("songBooksApi maps methods, encoded IDs, and JSON bodies", async () => {
     const calls = []
     const responses = [
-        jsonResponse([]),
+        jsonResponse({ items: [], page: 1, hasNext: false }),
         jsonResponse({ token: "book-csrf" }),
         jsonResponse({ id: "book / one", name: "Created" }, 201),
         jsonResponse({ id: "book / one", name: "Created" }),
         emptyResponse(204),
         emptyResponse(204),
-        jsonResponse([]),
+        jsonResponse({ items: [], page: 1, hasNext: false }),
         jsonResponse({
             id: "access / one",
             email: "reader@example.com",

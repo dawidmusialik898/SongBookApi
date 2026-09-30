@@ -1,4 +1,5 @@
 import { request } from "./httpClient.js"
+import { pageUrl } from "./pagination.js"
 
 function requireId(value, label) {
     if (
@@ -20,12 +21,12 @@ function getSongUrl(songBookId, songId) {
     return `${getSongsUrl(songBookId)}/${requireId(songId, "Song id")}`
 }
 
-export function getSongs(songBookId) {
-    return request(getSongsUrl(songBookId))
+export function getSongs(songBookId, page = 1) {
+    return request(pageUrl(getSongsUrl(songBookId), page))
 }
 
-export function getSong(songBookId, songId) {
-    return request(getSongUrl(songBookId, songId))
+export function getSong(songBookId, songId, { signal } = {}) {
+    return request(getSongUrl(songBookId, songId), { signal })
 }
 
 export function createSong(songBookId, songPayload) {

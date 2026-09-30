@@ -15,10 +15,14 @@ test("state and rendering remain explicit and loading is visible", async () => {
 
     assert.deepEqual(Object.keys(app.state), [
         "songBooks",
+        "songBookPage",
+        "songBookHasNext",
         "selectedSongBookId",
         "selectedSongBook",
         "selectedSongBookAccessLevel",
         "songBookMembers",
+        "memberPage",
+        "memberHasNext",
         "songBookFormMode",
         "isLoadingSongBooks",
         "isLoadingSongBook",
@@ -26,8 +30,11 @@ test("state and rendering remain explicit and loading is visible", async () => {
         "isLoadingSongBookMembers",
         "isSavingSongBookAccess",
         "songs",
+        "songPage",
+        "songHasNext",
         "selectedSongId",
         "selectedSong",
+        "showChords",
         "editorMode",
         "isLoadingSongs",
         "isLoadingSong",
@@ -39,10 +46,13 @@ test("state and rendering remain explicit and loading is visible", async () => {
         "authView",
         "isAuthPending",
         "managedUsers",
+        "managedUserPage",
+        "managedUserHasNext",
         "showUserManagement",
         "isLoadingManagedUsers",
         "mutatingManagedUserId"
     ])
+    assert.equal(app.state.showChords, true)
     assert.equal(app.state.isLoadingSongs, true)
     assert.equal(browser.getButton("Refresh songs").disabled, true)
     assert.equal(

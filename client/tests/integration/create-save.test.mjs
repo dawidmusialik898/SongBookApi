@@ -144,7 +144,46 @@ test("create validates, ignores duplicate submits, and selects server truth", as
     )
     assert.deepEqual(
         browser.requests.map(request => request.method),
-        ["GET", "POST", "GET", "GET"]
+        ["GET", "POST", "GET"]
+    )
+})
+
+test("an invalid create response does not report success or discard the draft", async () => {
+    const browser = installTestBrowser(request => {
+        if (request.method === "GET") {
+            return { body: [] }
+        }
+        if (request.method === "POST") {
+            return { body: { id: "created-song" }, status: 201 }
+        }
+        throw new Error(`Unexpected song request: ${request.url}`)
+    })
+    const app = await import("../../src/main.js?invalid-create")
+    await app.initialization
+    await browser.getButton("New song").click()
+    browser.getElement("song-title").value = "Unconfirmed draft"
+
+    const originalConsoleError = console.error
+    const errors = []
+    console.error = error => errors.push(error)
+    try {
+        await browser.getElement("song-form").submit()
+    } finally {
+        console.error = originalConsoleError
+    }
+
+    assert.equal(app.state.editorMode, "create")
+    assert.equal(app.state.selectedSongId, null)
+    assert.equal(browser.getElement("song-title").value, "Unconfirmed draft")
+    assert.equal(
+        browser.getElement("app-status").textContent,
+        "The song may have been created, but the API returned " +
+            "an invalid response. Refresh songs before trying again."
+    )
+    assert.equal(errors[0].name, "ApiError")
+    assert.deepEqual(
+        browser.requests.map(request => request.method),
+        ["GET", "POST"]
     )
 })
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using SongBookApi.Domain;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Repositories;
 using SongBookApi.Domain.Services;
@@ -38,7 +39,7 @@ public sealed class SongServiceTests
         public Task<Song?> GetByIdAsync(Guid songBookId, Guid songId) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Song>> GetAllAsync(Guid songBookId) =>
+        public Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page) =>
             throw new NotSupportedException();
 
         public Task<Song> AddAsync(Guid songBookId, Song song) =>

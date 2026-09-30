@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using SongBookApi.Domain;
 using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Repositories;
 using SongBookApi.Domain.Services;
@@ -13,8 +14,11 @@ public sealed class SongBookService(
     ISongBookRepository repository,
     UserManager<ApplicationUser> userManager) : ISongBookService
 {
-    public async Task<IReadOnlyList<SongBookSummary>> ListAsync(string userId) =>
-        (await repository.ListAccessibleAsync(userId)).Select(ToSummary).ToList();
+    public async Task<PageResult<SongBookSummary>> ListAsync(string userId, int page)
+    {
+        PageResult<AccessibleSongBook> books = await repository.ListAccessibleAsync(userId, page);
+        return new(books.Items.Select(ToSummary).ToArray(), books.Page, books.HasNext);
+    }
 
     public async Task<SongBookSummary?> GetAsync(Guid bookId, string userId)
     {
@@ -77,12 +81,15 @@ public sealed class SongBookService(
     public async Task DeleteAsync(Guid bookId, string ownerId) =>
         await repository.DeleteAsync(await GetOwnedBookAsync(bookId, ownerId));
 
-    public async Task<IReadOnlyList<SongBookMember>> ListMembersAsync(Guid bookId, string ownerId)
+    public async Task<PageResult<SongBookMember>> ListMembersAsync(Guid bookId, string ownerId, int page)
     {
         _ = await GetOwnedBookAsync(bookId, ownerId);
-        return (await repository.ListAccessAsync(bookId))
-            .Select(member => new SongBookMember(member.Id, member.Email, member.AccessLevel))
-            .ToList();
+        PageResult<SongBookCollaborator> members = await repository.ListAccessAsync(bookId, page);
+        return new(
+            members.Items.Select(member =>
+                new SongBookMember(member.Id, member.Email, member.AccessLevel)).ToArray(),
+            members.Page,
+            members.HasNext);
     }
 
     public async Task<SongBookMember?> SetAccessAsync(

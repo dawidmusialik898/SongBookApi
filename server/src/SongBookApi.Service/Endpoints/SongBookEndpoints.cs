@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using SongBookApi.Domain;
 using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Services;
 using SongBookApi.Service.Authentication;
@@ -27,11 +28,21 @@ public static class SongBookEndpoints
 
     private static async Task<IResult> List(
         ClaimsPrincipal principal,
-        ISongBookService service)
+        ISongBookService service,
+        int page = 1)
     {
-        IReadOnlyList<SongBookSummary> books =
-            await service.ListAsync(EndpointHelpers.GetUserId(principal));
-        return Results.Ok(books.Select(ToResponse));
+        IResult? invalidPage = EndpointHelpers.ValidatePage(page);
+        if (invalidPage is not null)
+        {
+            return invalidPage;
+        }
+
+        PageResult<SongBookSummary> books =
+            await service.ListAsync(EndpointHelpers.GetUserId(principal), page);
+        return Results.Ok(new PageResult<SongBookResponse>(
+            books.Items.Select(ToResponse).ToArray(),
+            books.Page,
+            books.HasNext));
     }
 
     private static async Task<IResult> Get(
@@ -125,7 +136,8 @@ public static class SongBookEndpoints
         Guid bookId,
         ClaimsPrincipal principal,
         ISongBookAccessService accessService,
-        ISongBookService service)
+        ISongBookService service,
+        int page = 1)
     {
         string userId = EndpointHelpers.GetUserId(principal);
         IResult? denial = await RequireAdminAsync(bookId, userId, accessService);
@@ -134,10 +146,19 @@ public static class SongBookEndpoints
             return denial;
         }
 
+        IResult? invalidPage = EndpointHelpers.ValidatePage(page);
+        if (invalidPage is not null)
+        {
+            return invalidPage;
+        }
+
         try
         {
-            IReadOnlyList<SongBookMember> members = await service.ListMembersAsync(bookId, userId);
-            return Results.Ok(members.Select(ToResponse));
+            PageResult<SongBookMember> members = await service.ListMembersAsync(bookId, userId, page);
+            return Results.Ok(new PageResult<SongBookAccessResponse>(
+                members.Items.Select(ToResponse).ToArray(),
+                members.Page,
+                members.HasNext));
         }
         catch (KeyNotFoundException)
         {

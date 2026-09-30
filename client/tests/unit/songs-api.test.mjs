@@ -31,7 +31,11 @@ test("songsApi exports exactly the supported runtime API", async () => {
 test("endpoint wrappers map methods, encoded IDs, bodies, and responses", async () => {
     const requests = []
     const responses = [
-        jsonResponse([{ id: "song-1" }]),
+        jsonResponse({
+            items: [{ id: "song-1" }],
+            page: 1,
+            hasNext: false
+        }),
         jsonResponse({ id: "song / one" }),
         jsonResponse({ token: "csrf-token" }),
         jsonResponse({ id: "song-2", title: "Created" }, 201),
@@ -61,7 +65,11 @@ test("endpoint wrappers map methods, encoded IDs, bodies, and responses", async 
         resetAntiforgeryToken()
         assert.deepEqual(
             await getSongs(SONG_BOOK_ID),
-            [{ id: "song-1" }]
+            {
+                items: [{ id: "song-1" }],
+                page: 1,
+                hasNext: false
+            }
         )
         assert.deepEqual(
             await getSong(SONG_BOOK_ID, "song / one"),

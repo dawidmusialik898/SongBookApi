@@ -45,7 +45,11 @@ test("songs API adapter completes the five-endpoint CRUD workflow", async () => 
 
         if (id === null && method === "GET") {
             return createFetchResponse({
-                body: [...songs.values()]
+                body: {
+                    items: [...songs.values()],
+                    page: 1,
+                    hasNext: false
+                }
             })
         }
 
@@ -135,7 +139,11 @@ test("songs API adapter completes the five-endpoint CRUD workflow", async () => 
         resetAntiforgeryToken()
         const createdSong = await createSong(songBookId, createPayload)
         assert.equal(createdSong.id, "song-1")
-        assert.deepEqual(await getSongs(songBookId), [createdSong])
+        assert.deepEqual(await getSongs(songBookId), {
+            items: [createdSong],
+            page: 1,
+            hasNext: false
+        })
         assert.deepEqual(
             await getSong(songBookId, createdSong.id),
             createdSong
@@ -159,7 +167,11 @@ test("songs API adapter completes the five-endpoint CRUD workflow", async () => 
             await deleteSong(songBookId, createdSong.id),
             undefined
         )
-        assert.deepEqual(await getSongs(songBookId), [])
+        assert.deepEqual(await getSongs(songBookId), {
+            items: [],
+            page: 1,
+            hasNext: false
+        })
 
         await assert.rejects(
             getSong(songBookId, createdSong.id),

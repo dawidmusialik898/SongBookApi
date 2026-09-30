@@ -1,4 +1,5 @@
 import { request } from "./httpClient.js"
+import { pageUrl } from "./pagination.js"
 
 const USERS_URL = "/admin/users"
 
@@ -14,8 +15,8 @@ function getUserUrl(userId) {
     return `${USERS_URL}/${encodeURIComponent(userId)}`
 }
 
-export function getManagedUsers() {
-    return request(USERS_URL)
+export function getManagedUsers(page = 1) {
+    return request(pageUrl(USERS_URL, page))
 }
 
 export function setManagedUserRole(userId, role) {

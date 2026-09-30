@@ -23,12 +23,12 @@ public sealed record SongBookMember(
 
 public interface ISongBookService
 {
-    Task<IReadOnlyList<SongBookSummary>> ListAsync(string userId);
+    Task<PageResult<SongBookSummary>> ListAsync(string userId, int page);
     Task<SongBookSummary?> GetAsync(Guid bookId, string userId);
     Task<SongBookSummary> CreateAsync(string ownerId, string? name);
     Task RenameAsync(Guid bookId, string ownerId, string? name);
     Task DeleteAsync(Guid bookId, string ownerId);
-    Task<IReadOnlyList<SongBookMember>> ListMembersAsync(Guid bookId, string ownerId);
+    Task<PageResult<SongBookMember>> ListMembersAsync(Guid bookId, string ownerId, int page);
     Task<SongBookMember?> SetAccessAsync(
         Guid bookId,
         string ownerId,

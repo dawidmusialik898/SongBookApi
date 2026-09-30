@@ -20,6 +20,10 @@ const requiredIds = [
     "refresh-song-books-button",
     "song-book-list",
     "song-book-list-state",
+    "song-book-pagination",
+    "previous-song-book-page-button",
+    "song-book-page-status",
+    "next-song-book-page-button",
     "song-book-form",
     "song-book-form-heading",
     "song-book-name",
@@ -30,6 +34,10 @@ const requiredIds = [
     "delete-song-book-button",
     "song-book-access-panel",
     "song-book-access-list",
+    "member-pagination",
+    "previous-member-page-button",
+    "member-page-status",
+    "next-member-page-button",
     "song-book-access-form",
     "song-book-access-email",
     "song-book-access-level",
@@ -41,6 +49,10 @@ const requiredIds = [
     "moderation-heading",
     "moderation-list-state",
     "moderation-list",
+    "user-pagination",
+    "previous-user-page-button",
+    "user-page-status",
+    "next-user-page-button",
     "close-moderation-button",
     "refresh-managed-users-button",
     "song-actions",
@@ -73,6 +85,10 @@ const requiredIds = [
     "song-list-heading",
     "song-list-state",
     "song-list",
+    "song-pagination",
+    "previous-song-page-button",
+    "song-page-status",
+    "next-song-page-button",
     "song-details",
     "song-form",
     "song-form-heading",
@@ -129,6 +145,34 @@ test("HTML shell contains each stable region exactly once", () => {
         getOpeningTag(indexHtml, "manage-users-button"),
         /\shidden(?:\s|>)/
     )
+    for (const [container, previous, next] of [
+        [
+            "song-book-pagination",
+            "previous-song-book-page-button",
+            "next-song-book-page-button"
+        ],
+        [
+            "member-pagination",
+            "previous-member-page-button",
+            "next-member-page-button"
+        ],
+        [
+            "song-pagination",
+            "previous-song-page-button",
+            "next-song-page-button"
+        ],
+        [
+            "user-pagination",
+            "previous-user-page-button",
+            "next-user-page-button"
+        ]
+    ]) {
+        assert.match(getOpeningTag(indexHtml, container), /<nav\b/)
+        assert.match(getOpeningTag(indexHtml, container), /\saria-label="/)
+        assert.match(getOpeningTag(indexHtml, container), /\shidden(?:\s|>)/)
+        assert.match(getOpeningTag(indexHtml, previous), /\stype="button"/)
+        assert.match(getOpeningTag(indexHtml, next), /\stype="button"/)
+    }
     assert.match(
         indexHtml,
         /<script type="module" src="src\/main\.js"><\/script>/

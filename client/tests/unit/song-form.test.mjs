@@ -3,7 +3,7 @@ import test from "node:test"
 
 import { installTestBrowser } from "../helpers/testBrowser.mjs"
 
-test("songForm exports exactly its four helpers", async () => {
+test("songForm exports its form and chord editor helpers", async () => {
     installTestBrowser(() => ({
         body: []
     }))
@@ -13,6 +13,7 @@ test("songForm exports exactly its four helpers", async () => {
         "buildSongPayload",
         "createPartDraft",
         "populateSongForm",
+        "renderChordEditor",
         "renderPartsEditor"
     ])
 })
@@ -85,6 +86,49 @@ test("drafts and payloads preserve existing IDs but omit browser-only data", asy
     assert.equal(Object.hasOwn(payload.parts[1], "id"), false)
 })
 
+test("chorded drafts copy annotations and preserve every lyric character", async () => {
+    const browser = installTestBrowser(() => ({ body: [] }))
+    const { buildSongPayload, createPartDraft } =
+        await import("../../src/songForm.js")
+    const original = {
+        id: "part-1",
+        name: "Verse",
+        text: " A\r\n🎸 ",
+        chords: [
+            { offset: 0, symbol: "G" },
+            { offset: 4, symbol: "Em" }
+        ]
+    }
+    const draft = createPartDraft(original)
+    assert.equal(draft.text, " A\n🎸 ")
+    assert.deepEqual(draft.chords, [
+        { offset: 0, symbol: "G" },
+        { offset: 3, symbol: "Em" }
+    ])
+    draft.chords[0].symbol = "C"
+    assert.equal(original.chords[0].symbol, "G")
+
+    const form = browser.getElement("song-form")
+    const payload = buildSongPayload(form, [draft])
+    assert.deepEqual(payload.parts, [{
+        id: "part-1",
+        name: "Verse",
+        text: " A\n🎸 ",
+        chords: [
+            { offset: 0, symbol: "C" },
+            { offset: 3, symbol: "Em" }
+        ]
+    }])
+    draft.chords = []
+    draft.chordsEdited = true
+    assert.deepEqual(buildSongPayload(form, [draft]).parts[0], {
+        id: "part-1",
+        name: "Verse",
+        text: "A\n🎸",
+        chords: []
+    })
+})
+
 test("parts editor renders labelled controls, keys, and move boundaries", async () => {
     const browser = installTestBrowser(() => ({
         body: []
@@ -146,4 +190,36 @@ test("parts editor renders labelled controls, keys, and move boundaries", async 
         ).length,
         2
     )
+})
+
+test("adding and reordering parts retain existing lyric controls", async () => {
+    const browser = installTestBrowser(() => ({ body: [] }))
+    const { renderPartsEditor } = await import("../../src/songForm.js")
+    const container = browser.getElement("parts-editor")
+    const drafts = [
+        { clientKey: "first", name: "Verse", text: "Long lyric" },
+        { clientKey: "second", name: "Chorus", text: "Other lyric" }
+    ]
+
+    renderPartsEditor(container, drafts)
+    const firstFieldset = container.children[0]
+    const secondFieldset = container.children[1]
+    const firstTextarea = firstFieldset.children[2].children[1]
+    drafts.push({ clientKey: "third", name: "Bridge", text: "" })
+    renderPartsEditor(container, drafts)
+    assert.equal(container.children[0], firstFieldset)
+    assert.equal(firstFieldset.children[2].children[1], firstTextarea)
+
+    drafts.reverse()
+    renderPartsEditor(container, drafts)
+    assert.equal(container.children[1], secondFieldset)
+    assert.equal(container.children[2], firstFieldset)
+    assert.equal(firstFieldset.children[2].children[1], firstTextarea)
+    assert.equal(firstTextarea.value, "Long lyric")
+    assert.equal(firstFieldset.children[0].textContent, "Part 3")
+
+    drafts.pop()
+    renderPartsEditor(container, drafts)
+    assert.equal(container.children.length, 2)
+    assert.equal(firstFieldset.parentNode, null)
 })

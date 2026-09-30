@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using SongBookApi.Domain;
 using SongBookApi.Service.Contracts;
 
 namespace SongBookApi.Service.Tests.Functional;
@@ -44,9 +45,9 @@ public sealed class SongCrudFunctionalTests : IClassFixture<SongBookApiFactory>
         Assert.Equal(new[] { "Chorus", "Verse", "Bridge" }, changed.Parts.Select(part => part.Name));
         Assert.NotEqual(Guid.Empty, changed.Parts[2].Id);
 
-        SongResponse[]? listed = await client.GetFromJsonAsync<SongResponse[]>(
+        PageResult<SongSummaryResponse>? listed = await client.GetFromJsonAsync<PageResult<SongSummaryResponse>>(
             $"/songbooks/{book.Id}/songs");
-        Assert.Contains(listed!, candidate => candidate.Id == song.Id);
+        Assert.Contains(listed!.Items, candidate => candidate.Id == song.Id);
 
         using HttpResponseMessage delete = await AuthenticationTestHelpers.DeleteWithAntiforgeryAsync(
             client, $"/songbooks/{book.Id}/songs/{song.Id}");

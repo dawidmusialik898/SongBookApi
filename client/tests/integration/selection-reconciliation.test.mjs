@@ -19,9 +19,9 @@ test("a successful collection refresh clears a missing selection", async () => {
         }
 
         if (request.url.endsWith("/songs/song-1")) {
-            return {
-                body: song
-            }
+            return collectionRequests > 1
+                ? { body: { title: "Not found" }, status: 404 }
+                : { body: song }
         }
 
         throw new Error(`Unexpected request: ${request.url}`)

@@ -3,6 +3,11 @@
 One repository contains the ASP.NET Core API and its vanilla JavaScript
 client. The backend serves the client and API on the same origin; there is no
 separate frontend server or npm build.
+Song books, songs, collaborators, and managed users load in 50-item pages;
+song lists contain summaries rather than full lyrics.
+Song parts can also carry optional guitar chords anchored above individual
+lyric characters; the song view can show or hide them without changing the
+lyrics.
 
 ```text
 client/   Browser assets, Node tests, and the original learning plan
@@ -39,7 +44,9 @@ node --test client/tests/unit/*.test.mjs \
 The publish command creates an ignored directory under `artifacts/` with
 the API and only `client/index.html`, `client/src/`, and `client/styles/`
 packaged as public assets. See [the deployment guide](deploy/README.md)
-before hosting for real users, and [the API README](server/README.md) for
-routes, authentication, and persistence details. The client learning plan in
+before hosting for real users, [the API README](server/README.md) for
+routes, authentication, and persistence details, and
+[the external dependency inventory](docs/external-dependencies.md) for
+packages, services, and reduction options. The client learning plan in
 `client/docs/` records earlier stages when client and server lived in
 separate repositories.

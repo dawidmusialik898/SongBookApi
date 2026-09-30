@@ -6,13 +6,15 @@ Use one form for both `POST /songs` and `PUT /songs/{id}`. The form should
 create plain JavaScript payloads from user input, validate friendly
 client-side rules, and never lose the selected song identity.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This stage is pending. Points 02, 04, 05, and 06 must be complete. In
-particular, route-authoritative updates and settable `Part.Id` are blocking
-requirements.
+This stage is complete. Points 02, 04, 05, and 06 are complete, including
+route-authoritative updates and settable `Part.Id`.
 
 ### Files in scope
 
@@ -20,6 +22,12 @@ Add:
 
 ```text
 SongBookClient/src/songForm.js
+SongBookClient/tests/unit/song-form.test.mjs
+SongBookClient/tests/integration/create-save.test.mjs
+SongBookClient/tests/integration/edit-save.test.mjs
+SongBookClient/tests/integration/editor-modes.test.mjs
+SongBookClient/tests/integration/save-failure.test.mjs
+SongBookClient/tests/functional/editor-workflow.test.mjs
 ```
 
 Modify:
@@ -28,6 +36,11 @@ Modify:
 SongBookClient/index.html
 SongBookClient/src/main.js
 SongBookClient/styles/app.css
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/unit/html-shell.test.mjs
+SongBookClient/tests/unit/main-structure.test.mjs
+SongBookClient/tests/functional/app-shell.test.mjs
+SongBookClient/docs/song-crud-learning-plan/07-create-and-edit.md
 ```
 
 Do not change the API in this stage unless validation proves point 02 was not
@@ -168,16 +181,20 @@ The API currently has no required-field or length validation. Do not mark
 
 ### Acceptance criteria
 
-- [ ] One form supports both create and edit modes.
-- [ ] Create bodies contain no song or part IDs for new objects.
-- [ ] Update URLs use `selectedSongId`; bodies contain no song ID.
-- [ ] Existing part IDs are preserved and new part IDs are server-generated.
-- [ ] Parts save in visible array order.
-- [ ] Blank scalar/part values serialize as `null`.
-- [ ] `204` update success triggers a refetch rather than JSON parsing.
-- [ ] Duplicate Save clicks issue one request.
-- [ ] Failed saves preserve typed data and part ordering.
-- [ ] Cancel never sends a request.
+- [x] One form supports both create and edit modes.
+- [x] Create bodies contain no song or part IDs for new objects.
+- [x] Update URLs use `selectedSongId`; bodies contain no song ID.
+- [x] Existing part IDs are preserved and new part IDs are server-generated.
+- [x] Parts save in visible array order.
+- [x] Blank scalar/part values serialize as `null`.
+- [x] `204` update success triggers collection and detail refetches.
+- [x] Duplicate Save clicks issue one request.
+- [x] Failed saves preserve typed data and part ordering.
+- [x] Cancel in create and edit mode never sends a request.
+- [x] Browser validation runs before a mutation request.
+- [x] Form and part mutation controls are disabled while saving.
+- [x] Unit, integration, and functional tests cover editor behavior.
+- [x] The editor contract and validation commands are documented.
 
 ### Validation
 
@@ -187,7 +204,18 @@ node --check src/main.js
 node --check src/songsApi.js
 rg 'innerHTML' src index.html
 rg '"order"[[:space:]]*:' src index.html
+node --test tests/unit/*.test.mjs
+node --test tests/integration/*.test.mjs
+node --test tests/functional/*.test.mjs
 ```
+
+The unit layer verifies the exact `songForm.js` API, browser-only draft keys,
+scalar population, null conversion, payload identity rules, labelled
+fieldsets, literal values, and move boundaries. The integration layer verifies
+create/edit/cancel modes, validation, duplicate submits, busy controls,
+route-authoritative updates, `204` refetch, part identity/order, and failed
+save preservation. The functional layer drives create and edit as one
+server-backed workflow.
 
 Browser acceptance:
 

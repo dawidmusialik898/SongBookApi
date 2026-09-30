@@ -6,11 +6,14 @@ Implement `DELETE /songs/{id}` in a way that makes the destructive action
 clear, avoids duplicate requests, and restores a truthful UI after success or
 failure.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This stage is pending and requires points 04, 06, and 07.
+This stage is complete. Points 04, 06, and 07 are complete.
 
 ### Files in scope
 
@@ -19,6 +22,19 @@ Modify:
 ```text
 SongBookClient/src/main.js
 SongBookClient/styles/app.css
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/unit/html-shell.test.mjs
+SongBookClient/tests/unit/read-rendering.test.mjs
+SongBookClient/docs/song-crud-learning-plan/08-delete-flow.md
+```
+
+Add:
+
+```text
+SongBookClient/tests/integration/delete-cancel.test.mjs
+SongBookClient/tests/integration/delete-failure.test.mjs
+SongBookClient/tests/integration/delete-nonselected-busy.test.mjs
+SongBookClient/tests/functional/delete-workflow.test.mjs
 ```
 
 `songsApi.js` should already expose `deleteSong`; change it only if point-04
@@ -75,21 +91,36 @@ that initiated the action.
 
 ### Acceptance criteria
 
-- [ ] Cancel sends no request and changes no state.
-- [ ] Confirm sends exactly one `DELETE /songs/{id}`.
-- [ ] `204` clears the deleted row and selected details after server refresh.
-- [ ] `404` converges to the same absent state with an informational message.
-- [ ] Network/500 failure leaves the song visible.
-- [ ] Repeated clicks cannot create concurrent delete requests.
-- [ ] Deleting a non-selected song does not clear the current selection.
-- [ ] Delete buttons have understandable accessible names.
+- [x] Cancel sends no request and changes no application state.
+- [x] Confirm sends exactly one `DELETE /songs/{id}`.
+- [x] `204` clears the deleted row and selected details after server refresh.
+- [x] `404` converges to the same absent state with an informational message.
+- [x] Network/500 failure leaves the song visible.
+- [x] Repeated clicks cannot create concurrent delete requests.
+- [x] Deleting a non-selected song does not clear the current selection.
+- [x] Only the target Delete controls are disabled during deletion.
+- [x] Save controls lock only when the selected song is being deleted.
+- [x] Success, cancellation, and failure move focus to the required control.
+- [x] Delete buttons have understandable accessible names.
+- [x] Unit, integration, and functional tests cover deletion behavior.
+- [x] The delete states and validation commands are documented.
 
 ### Validation
 
 ```sh
 node --check src/main.js
 node --check src/songsApi.js
+node --test tests/unit/*.test.mjs
+node --test tests/integration/*.test.mjs
+node --test tests/functional/*.test.mjs
 ```
+
+The unit layer verifies list/detail Delete controls, destructive styling, and
+accessible names including the untitled fallback. The integration layer
+verifies cancellation, one-request concurrency, target-only busy state,
+selected editor locking, failure preservation, and focus restoration. The
+functional layer verifies non-selected and selected `204` deletion plus stale
+`404` convergence through the complete UI workflow.
 
 Browser scenarios:
 

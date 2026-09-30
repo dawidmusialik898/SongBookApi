@@ -6,11 +6,14 @@ Expand `src/songsApi.js` into a predictable adapter for all five endpoints.
 The UI should receive JavaScript values or a meaningful error, never a silent
 `undefined` after a failed request.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This stage is pending. Points 02 and 03 must be complete.
+This stage is complete. Points 02 and 03 are complete.
 
 ### Files in scope
 
@@ -19,6 +22,17 @@ Modify:
 ```text
 SongBookClient/src/songsApi.js
 SongBookClient/src/main.js
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/integration/main-api-wiring.test.mjs
+SongBookClient/tests/functional/temporary-controls.test.mjs
+SongBookClient/docs/song-crud-learning-plan/04-fetch-api-layer.md
+```
+
+Add:
+
+```text
+SongBookClient/tests/unit/songs-api.test.mjs
+SongBookClient/tests/functional/songs-api-crud.test.mjs
 ```
 
 The `main.js` changes are compatibility changes only: update imports and the
@@ -133,22 +147,35 @@ Reject a missing or blank `id` before issuing an individual request. A simple
 
 ### Acceptance criteria
 
-- [ ] All five endpoint functions exist and use the shared helper.
-- [ ] Collection URLs are not duplicated.
-- [ ] IDs are URL-encoded.
-- [ ] Create/update payloads are serialized once.
-- [ ] Update and delete do not parse `204` as JSON.
-- [ ] `404` produces `ApiError.status === 404`.
-- [ ] A stopped API produces `ApiError.status === null`.
-- [ ] The current page still lists and creates the sample song.
-- [ ] There are no silent `undefined` returns after request failures.
+- [x] All five endpoint functions exist and use the shared helper.
+- [x] Collection URLs are not duplicated.
+- [x] IDs are URL-encoded.
+- [x] Create/update payloads are serialized once.
+- [x] Update and delete do not parse `204` as JSON.
+- [x] `404` produces `ApiError.status === 404`.
+- [x] A stopped API produces `ApiError.status === null`.
+- [x] The current page still lists and creates the sample song.
+- [x] Failed loads and creates retain the last successful list.
+- [x] There are no silent `undefined` returns after request failures.
+- [x] Unit, integration, and functional tests cover the stage behavior.
+- [x] The public API and validation commands are documented.
 
 ### Validation
 
 ```sh
 node --check src/songsApi.js
 node --check src/main.js
+node --test tests/unit/*.test.mjs
+node --test tests/integration/*.test.mjs
+node --test tests/functional/*.test.mjs
 ```
+
+The unit layer verifies the six-value public API, request mappings, encoded
+IDs, body serialization, response parsing, `204`, `ApiError`, network
+failures, and ID validation. The integration layer verifies that `main.js`
+uses the adapter and retains the last successful list on failure. The
+functional layer drives both the temporary page controls and a complete CRUD
+workflow through all five exported endpoint functions.
 
 With both servers running, exercise each exported function from a temporary
 browser-console import:

@@ -6,12 +6,15 @@ Give the small vanilla JavaScript application clear boundaries before its UI
 grows. A simple structure now prevents one large `main.js` file from becoming
 hard to debug.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This stage is pending and requires point 02 to be complete. Point 01 must still
-pass its browser checks.
+This stage is complete. Point 02 is complete, and point 01 still passes its
+browser checks.
 
 The purpose of this stage is to establish state and module ownership without
 building the final page or changing the API contract.
@@ -22,6 +25,16 @@ Modify:
 
 ```text
 SongBookClient/src/main.js
+SongBookClient/docs/song-crud-learning-plan/03-client-structure.md
+```
+
+Add:
+
+```text
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/unit/main-structure.test.mjs
+SongBookClient/tests/integration/main-api-wiring.test.mjs
+SongBookClient/tests/functional/temporary-controls.test.mjs
 ```
 
 Inspect but do not redesign yet:
@@ -83,20 +96,31 @@ the other fields establish the shared contract for later stages.
 
 ### Acceptance criteria
 
-- [ ] There is exactly one mutable application state object.
-- [ ] `main.js` contains no raw `fetch` call.
-- [ ] Rendering and loading are separate functions.
-- [ ] The existing collection still loads on page startup.
-- [ ] Temporary Get/Create/Refresh behavior still works.
-- [ ] No unused module is deleted while `main.js` imports it.
-- [ ] There are no unhandled promise rejections during the happy path.
+- [x] There is exactly one mutable application state object.
+- [x] `main.js` contains no raw `fetch` call.
+- [x] Rendering and loading are separate functions.
+- [x] The existing collection still loads on page startup.
+- [x] Temporary Get/Create/Refresh behavior still works.
+- [x] No unused module is deleted while `main.js` imports it.
+- [x] There are no unhandled promise rejections during the happy path.
+- [x] Unit, integration, and functional tests cover the stage behavior.
+- [x] The implementation and test commands are documented.
 
 ### Validation
 
 ```sh
 node --check src/main.js
 node --check src/songsApi.js
+node --test tests/unit/main-structure.test.mjs
+node --test tests/integration/main-api-wiring.test.mjs
+node --test tests/functional/temporary-controls.test.mjs
 ```
+
+The tests use Node's built-in test runner and a small DOM/fetch test double, so
+this stage adds no package manifest or dependency. The unit layer checks the
+state contract, explicit rendering, and loading controls. The integration
+layer checks `main.js` to `songsApi.js` wiring. The functional layer drives the
+temporary Get/Create/Refresh controls through the full module workflow.
 
 Run lite-server, load the page, create the existing sample song, and refresh
 the visible list.

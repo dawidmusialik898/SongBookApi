@@ -12,13 +12,17 @@ sharing workflows from the earlier guides are complete.
 The Development physical-file host, SQLite database, logged email links, local
 certificate, and localhost configuration are not a production deployment.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and blocking rule
 
-This stage is **decision-blocked**. An AI model must not implement production
-infrastructure or migrate providers by selecting hosting, database, email,
-secret, monitoring, and recovery services on the user's behalf.
+Points 01-12 are complete. This stage remains **decision-blocked** because an
+AI model must not implement production infrastructure or migrate providers by
+selecting hosting, database, email, secret, monitoring, and recovery services
+on the user's behalf.
 
 The first deliverable is a decision record and a provider-specific
 implementation plan. Code changes begin only after the user approves it.

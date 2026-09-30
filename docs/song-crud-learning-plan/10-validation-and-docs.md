@@ -8,12 +8,18 @@ few local setup facts a future developer needs to reproduce it.
 Do not stop after a happy-path demo. Most CRUD bugs appear around empty
 responses, missing records, browser restrictions, and failed requests.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-Run this stage only after points 01-09 are complete. It is a verification and
-small-fix stage, not an opportunity for a broad refactor.
+Points 01-12 are complete. The current automated suites, nested private API
+contract, same-origin authentication, persistence, authorization matrices,
+and real HTTPS restart workflow have been validated. Browser-only visual and
+accessibility-tree inspection remains a manual local check because this CLI
+environment has no browser executable.
 
 ### Files in scope
 
@@ -25,6 +31,7 @@ Expected documentation/test helpers:
 ```text
 SongBookApi/src/SongBookApi.Service/SongBookApi.Service.http
 SongBookApi/utils/simpleCurl.ps1
+SongBookApi/README.md
 SongBookClient/docs/song-crud-learning-plan/
 ```
 
@@ -46,6 +53,9 @@ From the client repository:
 
 ```sh
 node --check src/main.js
+node --check src/httpClient.js
+node --check src/authApi.js
+node --check src/songBooksApi.js
 node --check src/songsApi.js
 node --check src/songForm.js
 rg 'innerHTML|no-cors' index.html src
@@ -56,12 +66,13 @@ rg "fetch\\(" src --glob "*.js"
 Expected search results:
 
 - No `innerHTML`, `no-cors`, or serialized `order`.
-- Every raw `fetch(` occurrence is in `src/songsApi.js`.
+- Every raw `fetch(` occurrence is in `src/httpClient.js`.
 
-The baseline API branch was observed producing a vulnerability warning for a
-transitive `Microsoft.OpenApi` package. Record the current result. It does not
-block local CRUD verification by itself, but it must be resolved before point
-13 can claim production readiness.
+The current API restore reports high-severity warnings for transitive
+`Microsoft.OpenApi` and `SQLitePCLRaw.lib.e_sqlite3` packages. They do not
+block local workflow verification by themselves, but both must be resolved or
+explicitly risk-accepted with an upgrade plan before point 13 can claim
+production readiness.
 
 ### Runtime setup
 
@@ -73,19 +84,14 @@ dotnet run \
   --launch-profile https
 ```
 
-Start the client from its repository:
-
-```sh
-lite-server
-```
-
-Use a clean browser tab at `http://localhost:3000` with the Network and Console
-panels open. Clear existing in-memory songs by restarting the API when a clean
-scenario is needed.
+Use a clean browser tab at `https://localhost:7152/` with the Network and
+Console panels open. The API serves the client from the same origin in
+Development; do not start lite-server. Use a dedicated test account/book or a
+temporary database when a clean scenario is needed.
 
 ### Required CRUD acceptance dataset
 
-Create at least these records:
+Inside one private song book, create at least these records:
 
 1. A song with every scalar field and two multi-line parts.
 2. A song with optional scalar fields left blank and no parts.
@@ -98,15 +104,15 @@ server state.
 
 | Scenario | Required result |
 | --- | --- |
-| Initial load | One `GET /songs`; loading then collection/empty state |
-| Refresh | New `GET /songs`; no duplicate concurrent request |
-| View | `GET /songs/{id}` and correct current detail |
-| Create | `POST /songs`, `201`, returned ID selected after refresh |
-| Edit scalar fields | `PUT /songs/{id}`, `204`, changed values visible after refetch |
+| Initial load | `GET /songbooks`, then nested songs only after book selection |
+| Refresh | New scoped collection request; no duplicate concurrent request |
+| View | `GET /songbooks/{bookId}/songs/{songId}` and correct current detail |
+| Create | Nested `POST`, `201`, returned ID selected after refresh |
+| Edit scalar fields | Nested `PUT`, `204`, changed values visible after refetch |
 | Add/edit/reorder/remove parts | IDs preserved for existing parts; array order persisted |
 | Cancel create/edit | No mutation request |
 | Cancel delete | No DELETE request |
-| Confirm delete | `DELETE /songs/{id}`, `204`, row/detail removed after refresh |
+| Confirm delete | Nested `DELETE`, `204`, row/detail removed after refresh |
 
 ### Required failure matrix
 
@@ -121,7 +127,7 @@ server state.
 | Rapid A/B selection | Late A response cannot replace B |
 | Double Save | One mutation request |
 | Double Delete | One mutation request |
-| API restart | Client recovers; empty in-memory behavior is explained |
+| API restart | Accounts, books, access, songs, parts, and part order persist |
 
 ### API contract regression checks
 
@@ -167,15 +173,74 @@ When a check fails:
 
 ### Acceptance criteria
 
-- [ ] API build succeeds.
-- [ ] Vulnerability scan result is recorded for point 13.
-- [ ] All static architecture searches match expectations.
-- [ ] Every happy-path and failure scenario passes.
-- [ ] Console has no uncaught exceptions during tested flows.
-- [ ] Network panel shows the exact five endpoint patterns.
-- [ ] Part IDs and array ordering round-trip correctly.
-- [ ] Keyboard, focus, and narrow-layout checks pass.
-- [ ] No README or dependency is added without user approval.
+- [x] API build succeeds.
+- [x] Vulnerability scan result is recorded for point 13.
+- [x] All static architecture searches match expectations.
+- [x] Every happy-path and failure scenario passes.
+- [x] Console has no uncaught exceptions during automated tested flows.
+- [x] Runtime HTTP traces show the exact five endpoint patterns.
+- [x] Part IDs and array ordering round-trip correctly.
+- [x] Automated keyboard/focus and responsive-layout checks pass.
+- [x] No client README or dependency was added.
+
+### Validation record - 2026-07-27
+
+API results:
+
+- `dotnet build SongBookApi.slnx`: succeeded for all four projects.
+- `dotnet test SongBookApi.slnx --no-build`: 13 passed, 0 failed.
+- The vulnerability scan reported transitive `Microsoft.OpenApi` `2.0.0`,
+  severity High, advisory
+  `https://github.com/advisories/GHSA-v5pm-xwqc-g5wc`.
+- The running HTTPS service allowed only the configured localhost client
+  origins and returned successful preflights for `POST`, `PUT`, and `DELETE`.
+- A three-song dataset covered all scalar fields, blank optional fields, two
+  multi-line parts, non-ASCII text, and literal `<strong>Not markup</strong>`
+  content.
+- Real requests verified `201` create, `200` list/detail, `204` update/delete,
+  stale `404`, route-authoritative update identity, stable existing part IDs,
+  server-generated new part IDs, persisted array order, and empty `204`
+  response bodies.
+
+Client results:
+
+- All syntax and architecture searches matched the expected boundaries.
+- The only raw `fetch(` call is in `src/songsApi.js`.
+- Unit: 13 passed; integration: 12 passed; functional: 5 passed.
+- The real `songsApi.js` adapter completed create, list, detail, update, and
+  delete against `https://localhost:7152`.
+- Automated failure coverage verifies network, `404`, `5xx`, rapid selection,
+  duplicate Save/Delete suppression, draft preservation, focus restoration,
+  live-region roles, and literal text rendering.
+
+Environment notes:
+
+- Port 7152 and port 3000 already had healthy processes running from the two
+  repositories, so validation reused them rather than terminating user
+  processes.
+- The local developer certificate was accepted only by explicit insecure
+  command-line test flags. A normal browser must trust it before manual use.
+- PowerShell and a browser executable were unavailable. The PowerShell helper
+  was inspected, and equivalent real HTTP checks passed through Node/curl.
+  The manual zoom, accessibility-tree, Network-panel, and rendered 320-pixel
+  checks remain in the browser checklist below.
+
+### Current validation record - 2026-08-31
+
+- API: 24 tests passed across authentication, authorization, contracts,
+  persistence, cascades, constraints, and functional nested CRUD.
+- Client: 54 tests passed across unit, integration, and functional layers.
+- Raw `fetch` appears only in `src/httpClient.js`; client source contains no
+  hard-coded localhost API origin, browser auth storage, unscoped song URL, or
+  serialized `order` field.
+- A temporary real HTTPS database accepted an authenticated book and nested
+  song creation flow. After an API restart, the same session could retrieve
+  the persisted book, song, part identity, and part text.
+- Migrations list Identity followed by `AddSongBooks`.
+- The vulnerability scan reports the two high-severity transitive advisories
+  recorded in point 13.
+- Browser-only zoom, rendered responsive layout, accessibility-tree, and
+  screen-reader announcement inspection remain manual checks.
 
 ### Non-goals
 
@@ -189,32 +254,37 @@ Before testing the UI:
 
 - [ ] The API starts on the documented HTTPS URL.
 - [ ] The browser trusts the local HTTPS certificate.
-- [ ] The client is served from the documented HTTP origin, not `file://`.
-- [ ] The API CORS policy allows exactly that client origin.
-- [ ] The browser Network panel shows requests going to the intended API URL.
-- [ ] The API contract changes from document 02 are complete, or the UI
-      intentionally limits itself to scalar fields.
+- [ ] The client is served by the API at the same HTTPS origin, not `file://`
+      or lite-server.
+- [ ] No CORS response is required for the same-origin workflow.
+- [ ] The browser Network panel shows relative `/auth` and `/songbooks`
+      requests.
+- [ ] The point-02 route/part identity and point-12 nested authorization
+      contracts are active.
 
 ## Manual CRUD acceptance script
 
 Run this sequence in a fresh browser session:
 
-1. Load the page and confirm the initial list request is `GET /songs`.
-2. If the list is empty, confirm the empty state explains how to create a song.
-3. Create a song with all supported scalar fields.
-4. Confirm the request is `POST /songs`, has JSON content, and receives
-   `201 Created`.
-5. Confirm the new song appears in the list with the API-returned ID.
-6. Select it and confirm a `GET /songs/{id}` request loads its details.
-7. Change at least two fields and save.
-8. Confirm the request is `PUT /songs/{id}`, uses the intended route ID,
+1. Load the page, sign in, and confirm `GET /songbooks` loads only accessible
+   private books.
+2. Create or select a song book and confirm its nested song collection loads.
+3. If the list is empty, confirm the empty state explains how an Editor/Admin
+   can create a song.
+4. Create a song with all supported scalar fields.
+5. Confirm the request is `POST /songbooks/{bookId}/songs`, has JSON content,
+   and receives `201 Created`.
+6. Confirm the new song appears in the selected book with the API-returned ID.
+7. Select it and confirm a nested detail request loads its data.
+8. Change at least two fields and save.
+9. Confirm the nested `PUT` uses the intended book/song route IDs,
    contains no song ID in the payload, and handles the `204` response without
    JSON parsing errors.
-9. Reload the data from the API and confirm the changed values remain.
-10. Delete the song.
-11. Cancel once and confirm no network request occurs.
-12. Confirm once and verify `DELETE /songs/{id}` returns `204`.
-13. Confirm the row and selected detail are removed after refresh.
+10. Reload the data from the API and confirm the changed values remain.
+11. Delete the song.
+12. Cancel once and confirm no network request occurs.
+13. Confirm once and verify the nested `DELETE` returns `204`.
+14. Confirm the row and selected detail are removed after refresh.
 
 Repeat the create, view, edit, and delete sequence for parts after the API's
 round-trip identity contract is complete. Confirm array ordering.
@@ -229,7 +299,7 @@ round-trip identity contract is complete. Confirm array ordering.
 | Delete target was already removed | UI reports the state and refreshes rather than crashing. |
 | Double-click Save | Only one request is sent while saving is busy. |
 | Rapidly choose two songs | A late response cannot overwrite the newer selection. |
-| API restarts | UI can reload, and documentation explains that in-memory songs reset. |
+| API restarts | UI reloads persisted books, permissions, songs, and parts. |
 | Narrow browser viewport | List and editor remain readable and reachable. |
 | Keyboard-only navigation | All actions, form controls, and cancellation are usable. |
 
@@ -248,10 +318,10 @@ This turns tests into an HTTP learning exercise instead of a visual guess.
 
 ## API-level smoke testing
 
-The API repository contains `utils/simpleCurl.ps1`, which already sketches
-requests for the song endpoints. Update its example IDs and payload shapes
-when the API contract changes, then use it to distinguish backend behavior
-from frontend behavior.
+The API repository contains `utils/simpleCurl.ps1`, which exercises the
+authenticated song-book and nested-song endpoints. Update its example account
+and payload values when the contract changes, then use it to distinguish
+backend behavior from frontend behavior.
 
 The service also has a `.http` file. It is a useful place to keep a concise
 manual endpoint collection if your editor supports HTTP request files.
@@ -318,14 +388,15 @@ README remains optional and requires a separate user decision.
 
 Before calling the work complete, answer these without looking at code:
 
-- Where is the single API base URL defined?
+- Why do client API modules use relative URLs instead of an API base URL?
 - Which module performs raw `fetch` calls?
 - What happens when the API returns `204`?
-- What happens when `GET /songs/{id}` returns `404`?
-- Why is the route ID authoritative for `PUT`?
+- What happens when a selected private book becomes inaccessible?
+- Why are both book and song route IDs authoritative?
 - How are part IDs and array order preserved?
-- What browser origin is allowed by CORS?
-- How does a keyboard user create, save, cancel, and delete a song?
+- Why is CORS unnecessary for the Development application flow?
+- How does Reader/Editor/Admin access change the visible controls?
+- How does a keyboard user manage books, collaborators, and songs?
 
 If any answer is unclear, improve the code or documentation until it is
 obvious.
@@ -339,6 +410,8 @@ obvious.
 
 ## Checkpoint
 
-The work is complete when the acceptance script passes in a normal browser,
-failure states are truthful, and these guides accurately state the CORS,
-certificate, and in-memory-data assumptions.
+The automated work is complete when the nested CRUD, authentication,
+authorization, persistence, and failure matrices pass. Final local acceptance
+also requires the normal-browser script, truthful failure states, and guides
+that accurately state the same-origin, certificate, permission, and durable
+data assumptions.

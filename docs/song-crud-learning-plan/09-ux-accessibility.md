@@ -6,12 +6,15 @@ Make asynchronous CRUD behavior understandable and usable with a keyboard,
 screen reader, mouse, or touch device. Good feedback is not decoration: it
 prevents a user from thinking a failed request succeeded.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This is a hardening stage after points 05-08 are functionally complete. Do not
-use it to redesign the CRUD architecture.
+This stage is complete. Points 05-08 are complete, and the existing CRUD
+architecture remains unchanged.
 
 ### Files in scope
 
@@ -23,6 +26,19 @@ SongBookClient/src/main.js
 SongBookClient/src/songForm.js
 SongBookClient/styles/app.css
 SongBookClient/styles/buttons.css
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/unit/html-shell.test.mjs
+SongBookClient/tests/unit/read-rendering.test.mjs
+SongBookClient/tests/integration/create-save.test.mjs
+SongBookClient/tests/integration/delete-failure.test.mjs
+SongBookClient/tests/integration/edit-save.test.mjs
+SongBookClient/tests/integration/editor-modes.test.mjs
+SongBookClient/tests/integration/main-api-wiring.test.mjs
+SongBookClient/tests/integration/notice-errors.test.mjs
+SongBookClient/tests/integration/save-failure.test.mjs
+SongBookClient/tests/functional/editor-workflow.test.mjs
+SongBookClient/tests/functional/read-flow.test.mjs
+SongBookClient/docs/song-crud-learning-plan/09-ux-accessibility.md
 ```
 
 Do not change API contracts in this stage.
@@ -124,14 +140,14 @@ Add or verify:
 
 ### Acceptance criteria
 
-- [ ] Every async operation has visible pending, success, and failure feedback.
-- [ ] No failed request produces success-shaped UI.
-- [ ] The complete CRUD flow works using only keyboard input.
-- [ ] Focus is not lost to the document body after form close or deletion.
-- [ ] A selected song is recognizable without color.
-- [ ] All form and part controls have understandable accessible names.
-- [ ] User content is rendered as text.
-- [ ] Narrow and wide layouts remain usable.
+- [x] Every async operation has visible pending, success, and failure feedback.
+- [x] No failed request produces success-shaped UI.
+- [x] The complete CRUD flow works using only keyboard input.
+- [x] Focus is not lost to the document body after form close or deletion.
+- [x] A selected song is recognizable without color.
+- [x] All form and part controls have understandable accessible names.
+- [x] User content is rendered as text.
+- [x] Narrow and wide layouts remain usable.
 
 ### Validation
 
@@ -141,7 +157,18 @@ Static checks:
 node --check src/main.js
 node --check src/songForm.js
 rg "innerHTML|tabindex=\"[1-9]" index.html src
+node --test tests/unit/*.test.mjs
+node --test tests/integration/*.test.mjs
+node --test tests/functional/*.test.mjs
 ```
+
+The unit layer verifies persistent live-region markup, focusable headings,
+text-labelled controls, selected-state hooks, touch-target sizing, and literal
+text rendering. The integration layer verifies notice role transitions, safe
+`400` detail handling, truthful `5xx` and network errors, form busy
+explanations, validation focus, cancel focus, and post-save focus. The
+functional layer verifies focus and live-region behavior through complete
+read and editor workflows.
 
 Manual checks:
 

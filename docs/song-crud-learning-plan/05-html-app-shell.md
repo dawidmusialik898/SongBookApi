@@ -8,12 +8,15 @@ structure that gives every later JavaScript feature a stable place to render.
 Build the shell before filling it with network data. A clear HTML structure
 makes JavaScript simpler because each renderer has an obvious target.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This stage is pending. Points 03 and 04 must pass. The result must remain a
-plain static site served by lite-server.
+This stage is complete. Points 03 and 04 pass, and the result remains a plain
+static site served by lite-server.
 
 ### Files in scope
 
@@ -23,20 +26,27 @@ Modify:
 SongBookClient/index.html
 SongBookClient/src/main.js
 SongBookClient/styles/buttons.css
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/unit/main-structure.test.mjs
+SongBookClient/tests/integration/main-api-wiring.test.mjs
+SongBookClient/docs/song-crud-learning-plan/05-html-app-shell.md
 ```
 
 Add:
 
 ```text
 SongBookClient/styles/app.css
+SongBookClient/tests/unit/html-shell.test.mjs
+SongBookClient/tests/functional/app-shell.test.mjs
 ```
 
-Delete only after references are removed:
+Deleted after references were removed:
 
 ```text
 SongBookClient/src/factory.js
 SongBookClient/src/factories.js
 SongBookClient/src/modules/songList.html
+SongBookClient/tests/functional/temporary-controls.test.mjs
 ```
 
 ### Required HTML contract
@@ -119,16 +129,19 @@ readability.
 
 ### Acceptance criteria
 
-- [ ] The page has one visible `<h1>` and one `<main>`.
-- [ ] Every form control has an associated `<label>`.
-- [ ] Non-submit form buttons use `type="button"`.
-- [ ] All required IDs exist exactly once.
-- [ ] Refresh and initial list loading still work.
-- [ ] Request failures appear in the status region.
-- [ ] No visible control silently does nothing.
-- [ ] No script imports the deleted factory files.
-- [ ] The layout works without horizontal scrolling at 320 CSS pixels.
-- [ ] User data is rendered with `textContent`, not `innerHTML`.
+- [x] The page has one visible `<h1>` and one `<main>`.
+- [x] Every form control has an associated label or native button text.
+- [x] Non-submit form buttons use `type="button"`.
+- [x] All required IDs exist exactly once.
+- [x] Refresh and initial list loading still work.
+- [x] Request failures appear in the status region.
+- [x] No visible control silently does nothing.
+- [x] No script imports the deleted factory files.
+- [x] The layout avoids fixed widths and horizontal overflow at 320 CSS
+      pixels.
+- [x] User data is rendered with text nodes, not `innerHTML`.
+- [x] Unit, integration, and functional tests cover the shell behavior.
+- [x] The HTML, CSS, and test commands are documented.
 
 ### Validation
 
@@ -136,7 +149,16 @@ readability.
 node --check src/main.js
 node --check src/songsApi.js
 rg "factory|factories|songList\\.html|innerHTML" index.html src
+node --test tests/unit/*.test.mjs
+node --test tests/integration/*.test.mjs
+node --test tests/functional/*.test.mjs
 ```
+
+The unit layer verifies the state/loading renderer, every required ID, heading
+and form semantics, responsive CSS hooks, notices, selected rows, and button
+variants. The integration layer verifies startup and Refresh adapter wiring
+plus stale-list error feedback. The functional layer verifies empty,
+populated, refreshed, and hidden-editor shell behavior.
 
 The search must find no obsolete import/reference and no user-data
 `innerHTML` rendering. Inspect the page at narrow and wide browser widths and

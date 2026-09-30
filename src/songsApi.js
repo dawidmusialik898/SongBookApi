@@ -1,51 +1,49 @@
-const SongsApiUrl = "https://localhost:7152/songs"
+import { request } from "./httpClient.js"
 
-export async function fetchSongs() {
-    const url = SongsApiUrl
-    try {
-        const response = await fetch(url)
-        if (!response.ok) {
-            throw new Error(`Response status: ${response.status}`)
-        }
-        const result = await response.json()
-        console.log(result)
-        return result
-    } catch (error) {
-        console.error(error.message)
+function requireId(value, label) {
+    if (
+        value === undefined ||
+        value === null ||
+        String(value).trim() === ""
+    ) {
+        throw new TypeError(`${label} must not be blank.`)
     }
+
+    return encodeURIComponent(value)
 }
 
-export async function postSong(
-    title, author, originalTitle, number,
-    key, tempo, parts) {
-    const url = SongsApiUrl
-    try {
-        const response = await fetch(url,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    title: title,
-                    author: author,
-                    originalTitle: originalTitle,
-                    number: number,
-                    key: key,
-                    tempo: tempo,
-                    parts: parts,
-                })
-            }
-        )
+function getSongsUrl(songBookId) {
+    return `/songbooks/${requireId(songBookId, "Song book id")}/songs`
+}
 
-        if (!response.ok) {
-            throw new Error(`Response status: ${response.status}`)
-        }
+function getSongUrl(songBookId, songId) {
+    return `${getSongsUrl(songBookId)}/${requireId(songId, "Song id")}`
+}
 
-        const result = await response.json()
-        console.log(result)
-        return result
-    } catch (error) {
-        console.error(error.message)
-    }
+export function getSongs(songBookId) {
+    return request(getSongsUrl(songBookId))
+}
+
+export function getSong(songBookId, songId) {
+    return request(getSongUrl(songBookId, songId))
+}
+
+export function createSong(songBookId, songPayload) {
+    return request(getSongsUrl(songBookId), {
+        method: "POST",
+        json: songPayload
+    })
+}
+
+export function updateSong(songBookId, songId, songPayload) {
+    return request(getSongUrl(songBookId, songId), {
+        method: "PUT",
+        json: songPayload
+    })
+}
+
+export function deleteSong(songBookId, songId) {
+    return request(getSongUrl(songBookId, songId), {
+        method: "DELETE"
+    })
 }

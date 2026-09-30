@@ -89,6 +89,15 @@ SongBookApi/src/SongBookApi.Service/SongBookApi.Service.http
 SongBookApi/utils/simpleCurl.ps1
 ```
 
+Required automated tests and documentation:
+
+```text
+SongBookApi/tests/SongBookApi.Service.Tests/Unit/
+SongBookApi/tests/SongBookApi.Service.Tests/Integration/
+SongBookApi/tests/SongBookApi.Service.Tests/Functional/
+SongBookApi/README.md
+```
+
 Inspect, but change only if necessary:
 
 ```text
@@ -219,22 +228,35 @@ song may be created.
 
 ```sh
 dotnet build SongBookApi.slnx
+dotnet test SongBookApi.slnx
+dotnet test SongBookApi.slnx --filter "Category=Unit"
+dotnet test SongBookApi.slnx --filter "Category=Integration"
+dotnet test SongBookApi.slnx --filter "Category=Functional"
 ```
 
-Then execute the updated `.http` file or `utils/simpleCurl.ps1`. An AI model
-running on Linux may translate the PowerShell examples to equivalent `curl`
-commands, but it must preserve the same payloads and assertions.
+The unit layer verifies route-ID overwrite and part JSON construction. The
+integration layer verifies hosted endpoint behavior for omitted body IDs and
+missing routes. The functional layer executes the complete CRUD workflow,
+including a conflicting body ID, part identity, generated IDs, ordering, and
+deletion.
+
+Then execute the updated `.http` file or run `utils/simpleCurl.ps1` against the
+HTTPS profile. The PowerShell script is an external-server functional test
+with assertions. An AI model running on Linux may translate it to equivalent
+`curl` commands, but it must preserve the same payloads and assertions.
 
 ## Acceptance criteria
 
-- [ ] `PUT` always updates by route ID.
-- [ ] A conflicting body ID cannot redirect the update.
-- [ ] Unknown route IDs return `404`.
-- [ ] Existing part IDs survive an edit.
-- [ ] New parts receive server-generated IDs.
-- [ ] Part array order survives create and update.
-- [ ] No request or documentation example sends `order`.
-- [ ] The API solution builds successfully.
+- [x] `PUT` always updates by route ID.
+- [x] A conflicting body ID cannot redirect the update.
+- [x] Unknown route IDs return `404`.
+- [x] Existing part IDs survive an edit.
+- [x] New parts receive server-generated IDs.
+- [x] Part array order survives create and update.
+- [x] No request or documentation example sends `order`.
+- [x] Unit, integration, and functional tests pass.
+- [x] API contract and local test documentation are current.
+- [x] The API solution builds successfully.
 
 ## Non-goals
 

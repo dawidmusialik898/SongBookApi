@@ -13,12 +13,15 @@ The user should see clear loading, empty, populated, selected, and error
 states. Do this before creating the editor so the UI already proves that it can
 identify the correct song.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## AI implementation specification
 
 ### Status and prerequisites
 
-This stage is pending. Points 04 and 05 must be complete. The page must already
-have the static IDs defined in point 05.
+This stage is complete. Points 04 and 05 are complete, and the page uses the
+static IDs defined in point 05.
 
 ### Files in scope
 
@@ -27,6 +30,22 @@ Modify:
 ```text
 SongBookClient/src/main.js
 SongBookClient/styles/app.css
+SongBookClient/tests/helpers/testBrowser.mjs
+SongBookClient/tests/unit/main-structure.test.mjs
+SongBookClient/tests/unit/html-shell.test.mjs
+SongBookClient/tests/integration/main-api-wiring.test.mjs
+SongBookClient/tests/functional/app-shell.test.mjs
+SongBookClient/docs/song-crud-learning-plan/06-read-flows.md
+```
+
+Add:
+
+```text
+SongBookClient/tests/unit/read-rendering.test.mjs
+SongBookClient/tests/integration/missing-song.test.mjs
+SongBookClient/tests/integration/selection-race.test.mjs
+SongBookClient/tests/integration/selection-reconciliation.test.mjs
+SongBookClient/tests/functional/read-flow.test.mjs
 ```
 
 Change `index.html` only when an accessibility label or missing static
@@ -127,21 +146,35 @@ Do not display GUIDs in the normal UI. Do not render an Edit button until point
 
 ### Acceptance criteria
 
-- [ ] Initial and manual collection loads use one function.
-- [ ] Empty, loading, populated, stale-error, and selected states are visible.
-- [ ] Every song can be loaded through `GET /songs/{id}`.
-- [ ] Rapidly selecting A then B cannot leave A in B's detail panel.
-- [ ] A detail `404` clears stale selection and refreshes the collection.
-- [ ] Null fields never appear as the literal text `"null"`.
-- [ ] Parts render in API array order and preserve lyric line breaks.
-- [ ] No user-provided content is assigned to `innerHTML`.
+- [x] Initial and manual collection loads use one function.
+- [x] Empty, loading, populated, stale-error, and selected states are visible.
+- [x] Every song can be loaded through `GET /songs/{id}`.
+- [x] Rapidly selecting A then B cannot leave A in B's detail panel.
+- [x] A detail `404` clears stale selection and refreshes the collection once.
+- [x] A successful refresh clears a selection missing from the collection.
+- [x] Other detail failures retain the selected ID and provide a retry path.
+- [x] Null fields never appear as the literal text `"null"`.
+- [x] Parts render in API array order and preserve lyric line breaks.
+- [x] No user-provided content is assigned to `innerHTML`.
+- [x] Unit, integration, and functional tests cover the read behavior.
+- [x] The read states and validation commands are documented.
 
 ### Validation
 
 ```sh
 node --check src/main.js
 rg "innerHTML" src index.html
+node --test tests/unit/*.test.mjs
+node --test tests/integration/*.test.mjs
+node --test tests/functional/*.test.mjs
 ```
+
+The unit layer verifies list labels, selected hooks, null fallbacks, literal
+markup, ordered parts, multiline lyrics, and duplicate-load prevention. The
+integration layer verifies adapter wiring, stale collection failures,
+selection reconciliation, individual `404`, and rapid A/B response ordering.
+The functional layer exercises collection and individual reads as one user
+workflow, including retries and external removal.
 
 Browser scenarios:
 

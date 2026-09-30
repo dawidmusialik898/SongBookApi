@@ -1,12 +1,560 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<title>Śpiewnik SpoTkanie</title>
-		<link rel="stylesheet" href="styles/buttons.css">
-	</head>
-	<body>
-		<ul id="songList">
-		</ul>
-		<script type="module" src="src/main.js"></script>
-	</body>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Śpiewnik SpoTkanie</title>
+        <link rel="stylesheet" href="styles/app.css">
+        <link rel="stylesheet" href="styles/buttons.css">
+    </head>
+    <body>
+        <header class="app-header">
+            <div class="app-header__content">
+                <h1>Śpiewnik SpoTkanie</h1>
+                <div class="account-summary">
+                    <p id="auth-summary">Checking session...</p>
+                    <div class="toolbar" aria-label="Account actions">
+                        <button
+                            id="show-login-button"
+                            class="button button--primary"
+                            type="button"
+                            hidden
+                        >
+                            Sign in
+                        </button>
+                        <button
+                            id="show-register-button"
+                            class="button button--neutral"
+                            type="button"
+                            hidden
+                        >
+                            Register
+                        </button>
+                        <button
+                            id="logout-button"
+                            class="button button--neutral"
+                            type="button"
+                            hidden
+                        >
+                            Sign out
+                        </button>
+                    </div>
+                </div>
+                <div class="toolbar" aria-label="Song actions">
+                    <button
+                        id="new-song-button"
+                        class="button button--primary"
+                        type="button"
+                        hidden
+                    >
+                        New song
+                    </button>
+                    <button
+                        id="refresh-songs-button"
+                        class="button button--neutral"
+                        type="button"
+                    >
+                        Refresh songs
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <p
+            id="app-status"
+            class="notice"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+        ></p>
+
+        <section
+            id="auth-panel"
+            class="auth-panel panel"
+            aria-labelledby="auth-panel-heading"
+            hidden
+        >
+            <div class="auth-panel__heading">
+                <h2 id="auth-panel-heading" tabindex="-1">Account</h2>
+                <button
+                    id="close-auth-panel-button"
+                    class="button button--neutral"
+                    type="button"
+                >
+                    Close
+                </button>
+            </div>
+
+            <form id="login-form" class="auth-form" hidden>
+                <div class="form-field">
+                    <label for="login-email">Email</label>
+                    <input
+                        id="login-email"
+                        name="email"
+                        type="email"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+                <div class="form-field">
+                    <label for="login-password">Password</label>
+                    <input
+                        id="login-password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+                <div class="checkbox-field">
+                    <input
+                        id="login-remember-me"
+                        name="rememberMe"
+                        type="checkbox"
+                    >
+                    <label for="login-remember-me">Keep me signed in</label>
+                </div>
+                <div class="auth-form__links">
+                    <button
+                        id="show-resend-confirmation-button"
+                        class="button button--link"
+                        type="button"
+                    >
+                        Resend confirmation
+                    </button>
+                    <button
+                        id="show-forgot-password-button"
+                        class="button button--link"
+                        type="button"
+                    >
+                        Forgot password
+                    </button>
+                </div>
+                <button class="button button--primary" type="submit">
+                    Sign in
+                </button>
+            </form>
+
+            <form id="register-form" class="auth-form" hidden>
+                <div class="form-field">
+                    <label for="register-email">Email</label>
+                    <input
+                        id="register-email"
+                        name="email"
+                        type="email"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+                <div class="form-field">
+                    <label for="register-password">Password</label>
+                    <input
+                        id="register-password"
+                        name="password"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="12"
+                        required
+                    >
+                </div>
+                <div class="form-field">
+                    <label for="register-confirm-password">
+                        Confirm password
+                    </label>
+                    <input
+                        id="register-confirm-password"
+                        name="confirmPassword"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="12"
+                        required
+                    >
+                </div>
+                <button class="button button--primary" type="submit">
+                    Register
+                </button>
+            </form>
+
+            <form
+                id="resend-confirmation-form"
+                class="auth-form"
+                hidden
+            >
+                <div class="form-field">
+                    <label for="resend-confirmation-email">Email</label>
+                    <input
+                        id="resend-confirmation-email"
+                        name="email"
+                        type="email"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+                <button class="button button--primary" type="submit">
+                    Send confirmation email
+                </button>
+            </form>
+
+            <form id="forgot-password-form" class="auth-form" hidden>
+                <div class="form-field">
+                    <label for="forgot-password-email">Email</label>
+                    <input
+                        id="forgot-password-email"
+                        name="email"
+                        type="email"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+                <button class="button button--primary" type="submit">
+                    Send reset email
+                </button>
+            </form>
+
+            <form id="reset-password-form" class="auth-form" hidden>
+                <div class="form-field">
+                    <label for="reset-password-email">Email</label>
+                    <input
+                        id="reset-password-email"
+                        name="email"
+                        type="email"
+                        autocomplete="username"
+                        readonly
+                    >
+                </div>
+                <input
+                    id="reset-password-code"
+                    name="code"
+                    type="hidden"
+                >
+                <div class="form-field">
+                    <label for="reset-password-new-password">
+                        New password
+                    </label>
+                    <input
+                        id="reset-password-new-password"
+                        name="newPassword"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="12"
+                        required
+                    >
+                </div>
+                <div class="form-field">
+                    <label for="reset-password-confirm-password">
+                        Confirm new password
+                    </label>
+                    <input
+                        id="reset-password-confirm-password"
+                        name="confirmPassword"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="12"
+                        required
+                    >
+                </div>
+                <button class="button button--primary" type="submit">
+                    Reset password
+                </button>
+            </form>
+        </section>
+
+        <main class="app-layout">
+            <section
+                class="panel song-books-panel"
+                aria-labelledby="song-book-list-heading"
+            >
+                <div class="section-heading">
+                    <h2 id="song-book-list-heading" tabindex="-1">
+                        Song books
+                    </h2>
+                    <div class="toolbar" aria-label="Song-book actions">
+                        <button
+                            id="new-song-book-button"
+                            class="button button--primary"
+                            type="button"
+                            hidden
+                        >
+                            New song book
+                        </button>
+                        <button
+                            id="refresh-song-books-button"
+                            class="button button--neutral"
+                            type="button"
+                            hidden
+                        >
+                            Refresh song books
+                        </button>
+                    </div>
+                </div>
+
+                <p id="song-book-list-state">
+                    Sign in to load song books.
+                </p>
+                <ul
+                    id="song-book-list"
+                    class="song-book-list"
+                    aria-labelledby="song-book-list-heading"
+                ></ul>
+
+                <form
+                    id="song-book-form"
+                    class="song-book-form"
+                    aria-labelledby="song-book-form-heading"
+                    hidden
+                >
+                    <h3 id="song-book-form-heading">Song-book editor</h3>
+                    <div class="form-field">
+                        <label for="song-book-name">Name</label>
+                        <input
+                            id="song-book-name"
+                            name="name"
+                            type="text"
+                            maxlength="100"
+                            required
+                        >
+                    </div>
+                    <div class="form-actions">
+                        <button
+                            id="cancel-song-book-button"
+                            class="button button--neutral"
+                            type="button"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            id="save-song-book-button"
+                            class="button button--primary"
+                            type="submit"
+                        >
+                            Save song book
+                        </button>
+                    </div>
+                </form>
+
+                <section
+                    id="selected-song-book-panel"
+                    class="selected-song-book"
+                    aria-labelledby="selected-song-book-heading"
+                    hidden
+                >
+                    <div class="section-heading">
+                        <h3
+                            id="selected-song-book-heading"
+                            tabindex="-1"
+                        >
+                            Selected song book
+                        </h3>
+                        <div
+                            class="toolbar"
+                            aria-label="Selected song-book actions"
+                        >
+                            <button
+                                id="rename-song-book-button"
+                                class="button button--neutral"
+                                type="button"
+                                hidden
+                            >
+                                Rename
+                            </button>
+                            <button
+                                id="delete-song-book-button"
+                                class="button button--destructive"
+                                type="button"
+                                hidden
+                            >
+                                Delete song book
+                            </button>
+                        </div>
+                    </div>
+
+                    <section
+                        id="song-book-access-panel"
+                        class="song-book-access"
+                        aria-labelledby="song-book-access-heading"
+                        hidden
+                    >
+                        <h4 id="song-book-access-heading">
+                            Collaborators
+                        </h4>
+                        <p id="song-book-access-state"></p>
+                        <ul
+                            id="song-book-access-list"
+                            class="song-book-access-list"
+                            aria-labelledby="song-book-access-heading"
+                        ></ul>
+                        <form
+                            id="song-book-access-form"
+                            class="song-book-access-form"
+                        >
+                            <div class="form-field">
+                                <label for="song-book-access-email">
+                                    Registered email
+                                </label>
+                                <input
+                                    id="song-book-access-email"
+                                    name="email"
+                                    type="email"
+                                    autocomplete="off"
+                                    required
+                                >
+                            </div>
+                            <div class="form-field">
+                                <label for="song-book-access-level">
+                                    Access level
+                                </label>
+                                <select
+                                    id="song-book-access-level"
+                                    name="accessLevel"
+                                >
+                                    <option value="reader">Reader</option>
+                                    <option value="editor">Editor</option>
+                                </select>
+                            </div>
+                            <button
+                                id="save-song-book-access-button"
+                                class="button button--primary"
+                                type="submit"
+                            >
+                                Save access
+                            </button>
+                        </form>
+                    </section>
+                </section>
+            </section>
+
+            <section
+                class="panel"
+                aria-labelledby="song-list-heading"
+            >
+                <h2 id="song-list-heading" tabindex="-1">Songs</h2>
+                <p id="song-list-state">Select a song book.</p>
+                <ul
+                    id="song-list"
+                    class="song-list"
+                    aria-labelledby="song-list-heading"
+                ></ul>
+            </section>
+
+            <section
+                class="panel editor"
+                aria-labelledby="song-workspace-heading"
+            >
+                <h2 id="song-workspace-heading">Song workspace</h2>
+                <p id="write-access-message" hidden>
+                    Select a song book with Editor access to create or edit
+                    songs.
+                </p>
+
+                <div id="song-details">
+                    <p>Select a song to view its details.</p>
+                </div>
+
+                <form
+                    id="song-form"
+                    aria-labelledby="song-form-heading"
+                    hidden
+                >
+                    <h3 id="song-form-heading">Song editor</h3>
+
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label for="song-title">Title</label>
+                            <input
+                                id="song-title"
+                                name="title"
+                                type="text"
+                            >
+                        </div>
+
+                        <div class="form-field">
+                            <label for="song-author">Author</label>
+                            <input
+                                id="song-author"
+                                name="author"
+                                type="text"
+                            >
+                        </div>
+
+                        <div class="form-field">
+                            <label for="song-original-title">
+                                Original title
+                            </label>
+                            <input
+                                id="song-original-title"
+                                name="originalTitle"
+                                type="text"
+                            >
+                        </div>
+
+                        <div class="form-field">
+                            <label for="song-number">Number</label>
+                            <input
+                                id="song-number"
+                                name="number"
+                                type="text"
+                            >
+                        </div>
+
+                        <div class="form-field">
+                            <label for="song-key">Key</label>
+                            <input
+                                id="song-key"
+                                name="key"
+                                type="text"
+                            >
+                        </div>
+
+                        <div class="form-field">
+                            <label for="song-tempo">Tempo</label>
+                            <input
+                                id="song-tempo"
+                                name="tempo"
+                                type="text"
+                            >
+                        </div>
+                    </div>
+
+                    <section
+                        class="parts-section"
+                        aria-labelledby="parts-heading"
+                    >
+                        <h4 id="parts-heading">Parts</h4>
+                        <div id="parts-editor"></div>
+                        <button
+                            id="add-part-button"
+                            class="button button--neutral"
+                            type="button"
+                        >
+                            Add part
+                        </button>
+                    </section>
+
+                    <p
+                        id="song-form-status"
+                        class="form-status"
+                    ></p>
+
+                    <div class="form-actions">
+                        <button
+                            id="cancel-song-button"
+                            class="button button--neutral"
+                            type="button"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            id="save-song-button"
+                            class="button button--primary"
+                            type="submit"
+                        >
+                            Save song
+                        </button>
+                    </div>
+                </form>
+            </section>
+        </main>
+
+        <script type="module" src="src/main.js"></script>
+    </body>
 </html>

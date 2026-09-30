@@ -126,10 +126,26 @@ Every implementation stage must follow this workflow:
 4. Implement only the stage scope and tightly coupled fixes.
 5. Keep the application usable at the end of the stage; do not leave controls
    that silently do nothing.
-6. Run the stage validation commands and perform its browser acceptance checks.
-7. Report changed files, behavior delivered, and any unresolved limitation.
+6. Add or update unit, integration, and functional coverage for the behavior
+   changed by the stage.
+7. Run the stage validation commands, automated tests, and browser acceptance
+   checks.
+8. Update related setup, contract, and usage documentation in the same change.
+9. Report changed files, behavior delivered, and any unresolved limitation.
 
-Cross-stage engineering rules:
+### Testing and documentation policy
+
+Testing and documentation are delivery requirements for every
+behavior-changing stage, not work deferred to point 10. Each stage must keep
+unit, integration, and functional coverage current. A documentation-only or
+decision-only stage must explicitly record why a test layer is not applicable
+instead of silently omitting it.
+
+Use the repositories' existing test tooling. Do not add a client package
+manifest, framework, or dependency only to satisfy this rule without user
+approval.
+
+### Cross-stage engineering rules
 
 - Keep raw `fetch` calls inside `src/songsApi.js` through point 10. Point 11
   moves them into shared `src/httpClient.js`; no other module may call raw
@@ -176,27 +192,27 @@ decisions and must not be implemented by guessing.
 ## Recommended order
 
 - [x] Verify [01 - Local API integration](01-local-api-integration.md).
-- [ ] Resolve the backend contract issues in
+- [x] Resolve the backend contract issues in
       [02 - API contract safety](02-api-contract-safety.md).
-- [ ] Set up the client boundaries in
+- [x] Set up the client boundaries in
       [03 - Client structure](03-client-structure.md).
-- [ ] Make all HTTP calls reliable in
+- [x] Make all HTTP calls reliable in
       [04 - Fetch API layer](04-fetch-api-layer.md).
-- [ ] Replace the temporary page with the semantic shell in
+- [x] Replace the temporary page with the semantic shell in
       [05 - HTML app shell](05-html-app-shell.md).
-- [ ] Build list and detail behavior in
+- [x] Build list and detail behavior in
       [06 - Read flows](06-read-flows.md).
-- [ ] Build the shared editor in
+- [x] Build the shared editor in
       [07 - Create and edit](07-create-and-edit.md).
-- [ ] Add the destructive action safely in
+- [x] Add the destructive action safely in
       [08 - Delete flow](08-delete-flow.md).
-- [ ] Improve feedback and accessibility in
+- [x] Improve feedback and accessibility in
       [09 - UX and accessibility](09-ux-accessibility.md).
-- [ ] Run the acceptance checks and document local setup in
+- [x] Run the automated acceptance checks and document local setup in
       [10 - Validation and documentation](10-validation-and-docs.md).
-- [ ] Add same-origin cookie authentication and protect write operations in
+- [x] Add same-origin cookie authentication and protect write operations in
       [11 - Authentication and authorization](11-authentication-and-authorization.md).
-- [ ] Add private song books, ownership, and collaborator permissions in
+- [x] Add private song books, ownership, and collaborator permissions in
       [12 - Song-book repositories and sharing](12-song-book-repositories-and-sharing.md).
 - [ ] Plan the deployment and security changes in
       [13 - Production readiness](13-production-readiness.md).
@@ -207,19 +223,14 @@ decisions and must not be implemented by guessing.
 `key`, and `tempo`) plus a `parts` array. Array position is the current display
 order; this branch has no separate `order` property.
 
-The current API has two issues that matter to a client:
+Point 02 resolved route and part identity: nested route IDs are authoritative
+for updates, existing part IDs round-trip, and new parts receive server-owned
+IDs.
 
-1. The update service receives the route ID but currently ignores it and
-   updates by the generated or submitted `id` inside the request body.
-2. `Part.Id` is read-only and generated in the server constructor. As a
-   result, existing part IDs cannot be reliably preserved by an editor.
-
-Point 02 resolves both issues before the form editor is built. After that
-point, the route ID is authoritative for `PUT`, existing part IDs round-trip,
-and the client omits song IDs from create/update payload bodies.
-
-Also, the repository is in memory. A server restart intentionally clears all
-songs. Treat that as a development limitation, not a frontend bug.
+Point 12 persists Identity users, private song books, access entries, songs,
+parts, and explicit part positions in one SQLite database. Every song belongs
+to exactly one book and every song request is scoped by both `bookId` and
+`songId`. The old unscoped `/songs` routes no longer exist.
 
 ## Learning principles for this project
 
@@ -239,7 +250,7 @@ songs. Treat that as a development limitation, not a frontend bug.
 
 | Term | Meaning in this project |
 | --- | --- |
-| Origin | The combination of scheme, host, and port, such as `http://localhost:3000`. |
+| Origin | The combination of scheme, host, and port, such as `https://localhost:7152`. |
 | CORS | Browser rules that decide whether one origin may call another origin's API. |
 | API adapter | The `songsApi.js` module that converts HTTP requests and responses into JavaScript values. |
 | State | The current data needed to render the page, such as songs, selection, and loading flags. |
@@ -248,8 +259,10 @@ songs. Treat that as a development limitation, not a frontend bug.
 
 ## Definition of done
 
-The project is complete when all five endpoint rows in the table above are
-reachable from the UI, failures do not leave the page in a misleading state,
-all point-10 acceptance scenarios pass, and the implementation still uses only
-browser-native client dependencies. Production deployment is a separate
+The local learning application is complete when authenticated users can create
+private books, owners can manage Reader/Editor collaborators, every song CRUD
+request uses a nested book route, authorization changes clear stale private
+client state, persisted data survives restarts, and the point-10/11/12
+automated matrices pass. The client still uses only browser-native
+dependencies. Production deployment remains a separate, decision-gated
 milestone governed by point 13.

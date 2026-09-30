@@ -10,6 +10,9 @@ In this stage, song reads remain public while writes require an authenticated
 user whose email address has been confirmed. Point 12 replaces the temporary
 global song collection with private, permission-scoped song books.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## Selected decisions
 
 These decisions were made before writing this plan and are not open for an AI
@@ -35,7 +38,8 @@ administrator approval, roles, or private reads is a separate product change.
 
 ### Status and prerequisites
 
-This stage is pending. Points 01-10 must be complete.
+This stage is complete. Point 12 now supersedes its temporary public song
+reads and global `/songs` routes with authenticated private song books.
 
 The implementation must preserve all existing CRUD behavior while changing
 the final development URL from the lite-server origin to:
@@ -819,21 +823,41 @@ Do not assert raw cookie or token values in snapshots/log output.
 
 ## Acceptance criteria
 
-- [ ] The client loads from `https://localhost:7152/` without lite-server.
-- [ ] No CORS configuration remains necessary for the final Development flow.
-- [ ] Public users can list and view songs.
-- [ ] Anonymous song writes return `401` without redirect HTML.
-- [ ] Public registration works and does not automatically sign in.
-- [ ] Unconfirmed users cannot log in or write.
-- [ ] Confirmation permits login.
-- [ ] Confirmed users can create, update, and delete with antiforgery tokens.
-- [ ] Missing/invalid antiforgery tokens reject state-changing requests.
-- [ ] Logout invalidates the session and hides write controls.
-- [ ] Password reset works through a one-time emailed link.
-- [ ] Auth cookies never appear in JavaScript storage.
-- [ ] Existing unsaved song data survives an auth-expiration `401`.
-- [ ] Integration tests cover auth, authorization, email, cookies, and CSRF.
-- [ ] Development email links are clearly non-production.
+- [x] The client loads from `https://localhost:7152/` without lite-server.
+- [x] No CORS configuration remains necessary for the final Development flow.
+- [x] Public users could list/view songs at the point-11 checkpoint; point 12
+      intentionally replaces this with authenticated private reads.
+- [x] Anonymous protected requests return `401` without redirect HTML.
+- [x] Public registration works and does not automatically sign in.
+- [x] Unconfirmed users cannot log in or write.
+- [x] Confirmation permits login.
+- [x] Confirmed users can perform protected mutations with antiforgery tokens.
+- [x] Missing and invalid antiforgery tokens reject state-changing requests.
+- [x] Logout invalidates the session and hides private data/write controls.
+- [x] Password reset works through a one-time emailed link.
+- [x] Auth cookies never appear in JavaScript storage.
+- [x] Existing unsaved song data survives an auth-expiration `401` and is
+      restored only to the same account after access is revalidated.
+- [x] Integration tests cover auth, authorization, email, cookie attributes,
+      rate limits, and CSRF.
+- [x] Development email links are clearly non-production.
+
+### Validation record - 2026-08-31
+
+- Identity registration, confirmation, login, logout, session reporting,
+  password reset, reset-token reuse rejection, and non-enumerating recovery
+  responses pass hosted integration tests.
+- Tests assert registration does not create a session and the auth cookie has
+  the `__Host-` name, root path, Secure, HttpOnly, and SameSite=Lax
+  attributes.
+- Missing and invalid antiforgery tokens are rejected, and login/email
+  rate-limit policies return `429` at their configured thresholds.
+- The client clears server-derived private data immediately on `401`, keeps an
+  unsaved draft outside rendered private state, and restores it only when the
+  same account regains access to the same book.
+- Same-origin static hosting and the absence of Development CORS are covered
+  by hosted tests. Browser-only visual and accessibility-tree inspection
+  remains a manual local check.
 
 ## Validation commands
 

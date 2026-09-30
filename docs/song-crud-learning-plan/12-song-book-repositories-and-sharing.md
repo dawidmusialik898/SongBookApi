@@ -7,6 +7,9 @@ repositories. A song book has a name and contains songs. Its creator is the
 sole administrator and can grant registered users read-only or read/write
 access.
 
+This stage follows the mandatory
+[testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
+
 ## Selected decisions
 
 | Decision | Selected behavior |
@@ -29,8 +32,9 @@ access.
 
 ### Status and prerequisites
 
-This stage is pending. Point 11 authentication must be complete and its
-Identity migration applied.
+This stage is complete. The `AddSongBooks` migration follows the point-11
+Identity migration, and the global in-memory repository has been replaced by
+permission-scoped EF Core persistence.
 
 Point 12 deliberately supersedes two temporary behaviors:
 
@@ -646,20 +650,39 @@ Tests must assert persisted database state, not only HTTP response codes.
 
 ## Acceptance criteria
 
-- [ ] A confirmed user can create a private named song book.
-- [ ] The creator is always the sole Admin.
-- [ ] Names are unique per creator without case sensitivity.
-- [ ] Every song belongs to one and only one song book.
-- [ ] Unshared books and songs are invisible to other users.
-- [ ] Admin can grant/update/remove Reader and Editor access by registered
+- [x] A confirmed user can create a private named song book.
+- [x] The creator is always the sole Admin.
+- [x] Names are unique per creator without case sensitivity.
+- [x] Every song belongs to one and only one song book.
+- [x] Unshared books and songs are invisible to other users.
+- [x] Admin can grant/update/remove Reader and Editor access by registered
       email.
-- [ ] Reader can view but cannot mutate.
-- [ ] Editor can manage songs but cannot administer the book.
-- [ ] Admin can rename/delete the book and manage collaborators.
-- [ ] Revocation takes effect on the next request and clears stale client data.
-- [ ] All data persists across API restarts.
-- [ ] Old unscoped song endpoints are removed.
-- [ ] Automated tests prove tenant isolation and the complete permission matrix.
+- [x] Reader can view but cannot mutate.
+- [x] Editor can manage songs but cannot administer the book.
+- [x] Admin can rename/delete the book and manage collaborators.
+- [x] Revocation takes effect on the next request and clears stale client data.
+- [x] All data persists across API restarts.
+- [x] Old unscoped song endpoints are removed.
+- [x] Automated tests prove tenant isolation and the complete permission matrix.
+
+### Validation record - 2026-08-31
+
+- `dotnet test SongBookApi.slnx`: 24 passed, 0 failed.
+- The client Node suites: 54 passed, 0 failed.
+- EF tooling lists `20260727222024_AddIdentity` followed by
+  `20260831193025_AddSongBooks`.
+- Hosted tests cover private visibility, owner-only administration,
+  Reader/Editor permissions, collaborator changes, immediate revocation,
+  cross-book song isolation, database uniqueness, cascades, part order,
+  antiforgery, old-route removal, and file-backed restart persistence.
+- Client tests cover nested adapters, book CRUD, permission-aware controls,
+  collaborator management, stale-access cleanup, cross-account draft
+  isolation, and late-response protection.
+- A real HTTPS run against a temporary SQLite database completed login, book
+  creation, nested song creation/listing, API restart, session restoration,
+  and persisted book/song/part retrieval.
+- The three-profile visual browser script remains available below for manual
+  UI and accessibility inspection.
 
 ## Validation commands
 

@@ -1,7 +1,7 @@
 # Self-hosted SongBook: Ubuntu/Debian
 
 This is a best-effort, single-instance hobby deployment. The ASP.NET Core
-service serves the packaged `SongBookClient` files and API on one origin;
+service serves the packaged `client/` files and API on one origin;
 Caddy terminates HTTPS and forwards to Kestrel on `127.0.0.1:5080`.
 The operator supplies the machine, router configuration, a DuckDNS name, a
 dedicated Gmail sender, and a second machine for encrypted backups. Nothing
@@ -13,22 +13,22 @@ SSH to your LAN or a VPN; only ports 80 and 443 need internet forwarding.
 
 ## 1. Build a release on the development machine
 
-Keep `SongBookApi` and `SongBookClient` as sibling checkouts. Install the .NET
-10 SDK and Node.js, review/commit the changes you intend to deploy, then run:
+From the `SongBookApi` monorepo root, install the .NET 10 SDK and Node.js,
+review/commit the changes you intend to deploy, then run:
 
 ```sh
-cd SongBookClient
+cd client
 node --test tests/unit/*.test.mjs tests/integration/*.test.mjs tests/functional/*.test.mjs
-cd ../SongBookApi
-dotnet test SongBookApi.slnx
-dotnet list src/SongBookApi.Service/SongBookApi.Service.csproj package --vulnerable --include-transitive
+cd ..
+dotnet test server/SongBookApi.slnx
+dotnet list server/src/SongBookApi.Service/SongBookApi.Service.csproj package --vulnerable --include-transitive
 ./deploy/publish.sh
 ```
 
-The publish script prints a unique directory under `SongBookApi/artifacts/`.
+The publish script prints a unique directory under `artifacts/`.
 It includes `wwwroot/index.html`, `wwwroot/src/`, and `wwwroot/styles/`, and
-excludes the Development settings file. There is no npm build or production
-dependency on the sibling client checkout. Do not deploy if a high/critical
+excludes the Development settings file. There is no npm build or separate
+client checkout. Do not deploy if a high/critical
 dependency advisory remains unresolved or unapproved.
 
 ## 2. Prepare the host and public name

@@ -1,5 +1,9 @@
 # 12 - Song-Book Repositories and Sharing
 
+> Current monorepo paths: earlier `SongBookApi/` references are now under
+> `server/`, and `SongBookClient/` references are under `client/`. The file
+> lists below preserve the original stage's two-repository layout.
+
 ## Goal
 
 Let each authenticated user create private song books that act as song

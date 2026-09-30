@@ -9,6 +9,11 @@ not require React, a package manager, or a UI library.
 Work through the numbered files in order. Each file has a small, independently
 useful outcome, so you can commit and test one stage before starting the next.
 
+> Current layout: `SongBookApi` is one repository with `client/`, `server/`,
+> and `deploy/` at its root. The two-repository paths and CORS/lite-server
+> references below describe historical stages. Use the root README and
+> `deploy/README.md` for current run and release commands.
+
 ## Branch baseline
 
 This plan was prepared against these checked-out branches:

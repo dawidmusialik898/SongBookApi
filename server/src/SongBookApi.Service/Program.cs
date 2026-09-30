@@ -102,7 +102,7 @@ if (app.Environment.IsDevelopment())
 
     string configuredClientRoot = builder.Configuration["DevelopmentStaticFiles:ClientRoot"]
         ?? throw new InvalidOperationException(
-            "DevelopmentStaticFiles:ClientRoot must identify the sibling SongBookClient directory.");
+            "DevelopmentStaticFiles:ClientRoot must identify the client directory.");
     clientRoot = Path.GetFullPath(configuredClientRoot, app.Environment.ContentRootPath);
 }
 else

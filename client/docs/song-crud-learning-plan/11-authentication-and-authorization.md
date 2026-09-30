@@ -333,6 +333,10 @@ Do not add roles in this point.
 
 ## Phase 3 - Serve the client from the API origin
 
+In the current monorepo, the Development client root is `../../../client`
+relative to `server/src/SongBookApi.Service`. The sibling path in the original
+stage instructions below is retained for historical context.
+
 In `appsettings.Development.json`, configure the sibling client root:
 
 ```text

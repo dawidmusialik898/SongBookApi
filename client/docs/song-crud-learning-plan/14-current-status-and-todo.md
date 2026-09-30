@@ -2,8 +2,9 @@
 
 > Snapshot date: 2026-09-30
 >
-> This tracking document reflects the current staged, unstaged, and untracked
-> worktrees. It is not an additional implementation stage.
+> This tracking document reflects the monorepo at the same date. Earlier
+> validation records and stage instructions may refer to the two original
+> repositories; this is not an additional implementation stage.
 
 ## Status
 
@@ -14,6 +15,7 @@
 | Point 11 | Complete | Same-origin Identity cookie authentication, confirmation/recovery, antiforgery, rate limiting, protected routes, private-state cleanup, and auth UI are implemented. |
 | Point 12 | Complete | Persistent private song books, nested songs, Reader/Editor/Admin authorization, collaborator management, revocation, restart persistence, client UI, and isolation tests are implemented. |
 | Point 13 | Host verification pending | Approved home-host deployment is packaged and locally tested; public HTTPS, mail, second-machine restore, monitoring, and rollback still need on-host verification. |
+| Monorepo | Combined locally | `SongBookApi` contains both Git histories, with application code under `client/` and `server/` and shared release scripts under `deploy/`. |
 
 ## Delivered application
 
@@ -34,7 +36,7 @@
 
 ## Current validation evidence
 
-- Release `dotnet test SongBookApi.slnx`: 61 passed, 0 failed.
+- Release `dotnet test SongBookApi.slnx`: 62 passed, 0 failed.
 - Client Node suites: 63 passed, 0 failed.
 - EF migrations:
   `20260727222024_AddIdentity`,
@@ -97,7 +99,7 @@ code.
 
 ### Point-13 implementation after approval
 
-- [x] Package static client assets instead of reading a sibling source
+- [x] Package static client assets instead of reading a source
       checkout in production.
 - [ ] Configure provider-specific persistence, controlled migrations,
       automated backups, and a tested restore on the real host (templates and
@@ -117,7 +119,10 @@ code.
 
 ## Worktree handoff
 
-- [ ] Review the combined staged, unstaged, and untracked changes in both
-      repositories.
-- [ ] Review and commit the intended changes in both repositories, including
-      the separate moderation work, before publishing a release.
+- [x] Preserve the previously uncommitted client and API changes in their
+      original histories before merging into the canonical repository.
+- [ ] Review the combined monorepo branch and publish only after verifying its
+      updated development and release workflows.
+- [ ] Archive the old `SongBookClient` remote only after the canonical
+      `SongBookApi` branch is pushed and verified; its local checkout remains
+      untouched.

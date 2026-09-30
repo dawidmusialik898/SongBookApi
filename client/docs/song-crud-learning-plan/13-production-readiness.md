@@ -15,6 +15,10 @@ certificate, and localhost configuration are not a production deployment.
 This stage follows the mandatory
 [testing and documentation policy](00-overall-plan.md#testing-and-documentation-policy).
 
+The current monorepo has `client/`, `server/`, and `deploy/` at its root.
+Historical two-repository references elsewhere in this learning plan predate
+the merge.
+
 ## AI implementation specification
 
 ### Status and blocking rule
@@ -33,7 +37,7 @@ separate approval.
 
 This is a best-effort, zero-cost deployment for a hobby site with a few users,
 not a high-availability service. No private host names, account identifiers,
-credentials, or tokens belong in either repository.
+credentials, or tokens belong in the repository.
 
 | Decision | Selected approach |
 | --- | --- |
@@ -45,7 +49,7 @@ credentials, or tokens belong in either repository.
 | Data Protection | A persistent, service-account-only key directory on the same host, backed up alongside the database. |
 | Recovery | Consistent SQLite backups twice daily to a second machine, 30 days of retention, up to 24 hours of acceptable data loss, and a tested restore. |
 | Monitoring | Public, non-sensitive health response and local journal logs; a free UptimeRobot check alerts the operator's own mailbox. |
-| Delivery | Repeatable Release publish of both repositories into one artifact; manual SSH promotion through systemd with a previous release available for rollback. |
+| Delivery | Repeatable Release publish of `client/` and `server/` into one artifact; manual SSH promotion through systemd with a previous release available for rollback. |
 
 The operator must provision the machine, router forwarding, DuckDNS, Gmail,
 backup machine, and external monitor. Port-forwarding, certificate issuance,
@@ -54,18 +58,18 @@ verified before real users depend on the site.
 
 ### Approved file-level implementation plan
 
-1. Update `SongBookApi/src/SongBookApi.Service/Program.cs` and its authentication
+1. Update `server/src/SongBookApi.Service/Program.cs` and its authentication
    setup to load production credentials, serve packaged client assets only,
    trust only the loopback reverse proxy, persist Data Protection keys, expose
    a health check, return safe errors/security headers, and make production
    SQLite migrations an explicit pre-start command. Preserve Development
    startup and the existing cookie/antiforgery/authorization behavior.
 2. Add a reproducible API-side Release publish step that packages
-   `SongBookClient/index.html`, `src/`, and `styles/` without a frontend
+   `client/index.html`, `client/src/`, and `client/styles/` without a frontend
    package manager. Add host templates and scripts for systemd, Caddy,
    DuckDNS updates, backup/restore, manual deployment, and rollback. Secrets
    and deployment-specific names remain on the host.
-3. Add backend production-hosting and configuration tests. Update the API
+3. Add backend production-hosting and configuration tests. Update the server
    README and this guide with setup, validation, and operator steps; do not
    change client API routes or introduce a split-origin deployment.
 
@@ -160,7 +164,7 @@ the repository.
 
 #### Phase D: static hosting and browser security
 
-- Replace the Development sibling-directory physical file provider with the
+- Replace the Development source-directory physical file provider with the
   approved packaged production static hosting mechanism.
 - Serve a trusted HTTPS certificate and redirect HTTP.
 - Add HSTS only after the HTTPS deployment is confirmed.
@@ -171,7 +175,7 @@ the repository.
 
 #### Phase E: release automation
 
-- Build and test both repositories in a repeatable pipeline.
+- Build and test the client and server in a repeatable pipeline.
 - Run dependency vulnerability scans.
 - Apply migrations using the approved deployment strategy.
 - Deploy to a staging environment first.
@@ -210,17 +214,17 @@ The release is blocked unless:
 The local backup rehearsal restored SQLite rows and Data Protection key bytes
 using real `sqlite3` and restic over a local SFTP server; it does **not**
 satisfy the separate off-host restore gate above. The 2026-09-30 Release API
-suite passed 61 tests, the client Node suites passed 63, and a packaged
+suite passed 62 tests, the client Node suites passed 63, and a packaged
 Production process served the client, applied migrations separately,
 rejected unexpected hosts, and reported `503` for missing/stale backups.
-Follow the sibling API repository's `deploy/README.md` for the host checklist.
+Follow the root `deploy/README.md` for the host checklist.
 
 ### Validation commands
 
 The exact provider commands belong in the approved file-level plan. At
 minimum, every release candidate must run:
 
-From the API repository:
+From `server/`:
 
 ```sh
 dotnet build SongBookApi.slnx --configuration Release
@@ -229,7 +233,7 @@ dotnet list src/SongBookApi.Service/SongBookApi.Service.csproj \
   package --vulnerable --include-transitive
 ```
 
-From the client repository:
+From `client/`:
 
 ```sh
 node --check src/main.js
@@ -250,15 +254,15 @@ Exact files depend on approved choices. The AI must produce a file-level plan
 before editing. Likely areas include:
 
 ```text
-SongBookApi/src/SongBookApi.Service/Program.cs
-SongBookApi/src/SongBookApi.Service/Endpoints/
-SongBookApi/src/SongBookApi.Service/appsettings*.json
-SongBookApi/src/SongBookApi.Infrastructure/
-SongBookApi/src/SongBookApi.Domain/
-SongBookClient/src/httpClient.js
-SongBookClient/src/authApi.js
-SongBookClient/src/songBooksApi.js
-SongBookClient/src/songsApi.js
+server/src/SongBookApi.Service/Program.cs
+server/src/SongBookApi.Service/Endpoints/
+server/src/SongBookApi.Service/appsettings*.json
+server/src/SongBookApi.Infrastructure/
+server/src/SongBookApi.Domain/
+client/src/httpClient.js
+client/src/authApi.js
+client/src/songBooksApi.js
+client/src/songsApi.js
 deployment/pipeline files approved by the user
 ```
 
@@ -308,7 +312,7 @@ security design before implementation.
 
 | Area | What needs to change | Why it matters |
 | --- | --- | --- |
-| Hosting | Replace the Development sibling-directory provider with packaged static assets on the approved host. | Production must not depend on sibling source repositories. |
+| Hosting | Replace the Development source-directory provider with packaged static assets on the approved host. | Production must not depend on a source checkout. |
 | Frontend configuration | Preserve relative same-origin routes and remove Development-only paths. | Release configuration must be portable and reproducible. |
 | Persistence | Run the point-12 schema on an approved durable production database. | Provider, migration, scaling, and backup behavior must be deliberate. |
 | Data protection | Back up the database and practice restoring a backup. | A database without tested restores is not reliable storage. |

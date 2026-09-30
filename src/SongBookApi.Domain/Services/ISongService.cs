@@ -6,11 +6,11 @@ namespace SongBookApi.Domain.Services;
 
 public interface ISongService
 {
-    Task<Song?> CreateSongAsync(Song songDto);
-    Task<bool> DeleteSongAsync(Guid id);
-    Task<IEnumerable<Song>> GetAllSongsAsync();
-    Task<Song?> GetSongByIdAsync(Guid id);
-    Task<bool> UpdateSongAsync(Guid id, Song songDto);
+    Task<Song> CreateSongAsync(Guid songBookId, Song song);
+    Task<bool> DeleteSongAsync(Guid songBookId, Guid songId);
+    Task<IReadOnlyList<Song>> GetAllSongsAsync(Guid songBookId);
+    Task<Song?> GetSongByIdAsync(Guid songBookId, Guid songId);
+    Task<bool> UpdateSongAsync(Guid songBookId, Guid songId, Song song);
 }
 
 public class SongService : ISongService
@@ -25,32 +25,34 @@ public class SongService : ISongService
         _logger = logger;
     }
 
-    public async Task<Song?> CreateSongAsync(Song songDto)
+    public async Task<Song> CreateSongAsync(Guid songBookId, Song song)
     {
-        _logger.LogInformation("Creating a new song with title: {Title}", songDto.Title);
-        return await _songRepository.AddSongAsync(songDto);
+        _logger.LogInformation("Creating a new song in book {SongBookId} with title: {Title}", songBookId, song.Title);
+        return await _songRepository.AddAsync(songBookId, song);
     }
-    public async Task<bool> DeleteSongAsync(Guid id)
+    public async Task<bool> DeleteSongAsync(Guid songBookId, Guid songId)
     {
-        _logger.LogInformation("Deleting song with id: {Id}", id);
-        return await _songRepository.DeleteSongAsync(id);
-    }
-
-    public async Task<IEnumerable<Song>> GetAllSongsAsync()
-    {
-        _logger.LogInformation("Getting all songs");
-        return await _songRepository.GetllSongsAsync();
+        _logger.LogInformation("Deleting song {SongId} from book {SongBookId}", songId, songBookId);
+        return await _songRepository.DeleteAsync(songBookId, songId);
     }
 
-    public async Task<Song?> GetSongByIdAsync(Guid id)
+    public async Task<IReadOnlyList<Song>> GetAllSongsAsync(Guid songBookId)
     {
-        _logger.LogInformation("Getting song with id: {Id}", id);
-        return await _songRepository.GetSongByIdAsync(id);
+        _logger.LogInformation("Getting all songs in book {SongBookId}", songBookId);
+        return await _songRepository.GetAllAsync(songBookId);
     }
 
-    public async Task<bool> UpdateSongAsync(Guid id, Song songDto)
+    public async Task<Song?> GetSongByIdAsync(Guid songBookId, Guid songId)
     {
-        _logger.LogInformation("Updating song with id: {Id}", id);
-        return await _songRepository.UpdateSongAsync(songDto);
+        _logger.LogInformation("Getting song {SongId} from book {SongBookId}", songId, songBookId);
+        return await _songRepository.GetByIdAsync(songBookId, songId);
+    }
+
+    public async Task<bool> UpdateSongAsync(Guid songBookId, Guid songId, Song song)
+    {
+        _logger.LogInformation("Updating song {SongId} in book {SongBookId}", songId, songBookId);
+        song.Id = songId;
+        song.SongBookId = songBookId;
+        return await _songRepository.UpdateAsync(songBookId, songId, song);
     }
 }

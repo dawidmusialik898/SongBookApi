@@ -61,6 +61,9 @@ BenchmarkDotNet.Artifacts/
 # .NET Core
 project.lock.json
 project.fragment.lock.json
+*.db
+*.db-shm
+*.db-wal
 artifacts/
 
 # ASP.NET Scaffolding

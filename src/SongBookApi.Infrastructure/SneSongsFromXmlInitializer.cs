@@ -35,13 +35,13 @@ public class SneSongsFromXmlSeeder : ISongDbSeeder
             Parts = GetParts(xmlSong.SelectNodes(@".//Slide")),
         };
 
-    private static Part[] GetParts(XmlNodeList parts)
+    private static List<Part> GetParts(XmlNodeList parts)
         => parts.Cast<XmlNode>().Select(p =>
             new Part()
             {
                 Name = p.SelectSingleNode(@".//Part")?.InnerText,
                 Text = p.SelectSingleNode(@".//Text")?.InnerText
-            }).ToArray();
+            }).ToList();
 }
 
 public interface ISongDbSeeder

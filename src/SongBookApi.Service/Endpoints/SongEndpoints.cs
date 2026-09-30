@@ -1,6 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
-using SongBookApi.Domain.Dto;
+using System.Security.Claims;
+using DomainSong = SongBookApi.Domain.Dto.Song;
+using DomainPart = SongBookApi.Domain.Dto.Part;
 using SongBookApi.Domain.Services;
+using SongBookApi.Service.Authentication;
+using SongBookApi.Service.Contracts;
 
 namespace SongBookApi.Service.Endpoints;
 
@@ -8,80 +11,186 @@ public static class SongEndpoints
 {
     public static void MapSongEndpoints(this WebApplication app)
     {
-        _ = app.MapGet("/songs", GetSongs)
-            .WithName("GetSongs")
-            .RequireCors(ServiceConstants.SongBookClientPolicyName);
+        RouteGroupBuilder songs = app.MapGroup("/songbooks/{bookId:guid}/songs")
+            .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy);
 
-        _ = app.MapGet("/songs/{id}", GetSongById)
-            .WithName("GetSongById")
-            .RequireCors(ServiceConstants.SongBookClientPolicyName);
-
-        _ = app.MapPost("/songs", CreateSong)
-            .Accepts<Song>("application/json")
-            .Produces<Song>(201)
-            .WithName("CreateSong")
-            .RequireCors(ServiceConstants.SongBookClientPolicyName);
-
-        _ = app.MapPut("/songs/{id}", UpdateSong)
-            .Accepts<Song>("application/json")
-            .Produces(204)
-            .WithName("UpdateSong")
-            .RequireCors(ServiceConstants.SongBookClientPolicyName);
-
-        _ = app.MapDelete("/songs/{id}", DeleteSong)
-            .Produces(204)
-            .WithName("DeleteSong")
-            .RequireCors(ServiceConstants.SongBookClientPolicyName);
+        songs.MapGet("", GetSongs);
+        songs.MapGet("/{songId:guid}", GetSong);
+        songs.MapPost("", CreateSong).AddEndpointFilter<AntiforgeryValidationFilter>();
+        songs.MapPut("/{songId:guid}", UpdateSong).AddEndpointFilter<AntiforgeryValidationFilter>();
+        songs.MapDelete("/{songId:guid}", DeleteSong).AddEndpointFilter<AntiforgeryValidationFilter>();
     }
 
     private static async Task<IResult> GetSongs(
-        [FromServices] ISongService songService,
-        [FromServices] ILogger<SongService> logger)
+        Guid bookId,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService)
     {
+        IResult? denial = await RequireAccessAsync(
+            bookId,
+            EndpointHelpers.GetUserId(principal),
+            accessService,
+            EffectiveSongBookAccess.Reader);
+        if (denial is not null)
+        {
+            return denial;
+        }
+
+        return Results.Ok((await songService.GetAllSongsAsync(bookId)).Select(ToResponse));
+    }
+
+    private static async Task<IResult> GetSong(
+        Guid bookId,
+        Guid songId,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService)
+    {
+        IResult? denial = await RequireAccessAsync(
+            bookId,
+            EndpointHelpers.GetUserId(principal),
+            accessService,
+            EffectiveSongBookAccess.Reader);
+        if (denial is not null)
+        {
+            return denial;
+        }
+
+        DomainSong? song = await songService.GetSongByIdAsync(bookId, songId);
+        return song is null ? Results.NotFound() : Results.Ok(ToResponse(song));
+    }
+
+    private static async Task<IResult> CreateSong(
+        Guid bookId,
+        SongRequest request,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService)
+    {
+        IResult? denial = await RequireAccessAsync(
+            bookId,
+            EndpointHelpers.GetUserId(principal),
+            accessService,
+            EffectiveSongBookAccess.Editor);
+        if (denial is not null)
+        {
+            return denial;
+        }
+        if (request.Parts?.Any(part => part.Id.HasValue) == true)
+        {
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]>
+                {
+                    ["parts"] = ["Part IDs are accepted only when updating existing parts."]
+                });
+        }
+
+        DomainSong created = await songService.CreateSongAsync(bookId, ToDomain(request, acceptPartIds: false));
+        return Results.Created(
+            $"/songbooks/{bookId}/songs/{created.Id}",
+            ToResponse(created));
+    }
+
+    private static async Task<IResult> UpdateSong(
+        Guid bookId,
+        Guid songId,
+        SongRequest request,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService)
+    {
+        IResult? denial = await RequireAccessAsync(
+            bookId,
+            EndpointHelpers.GetUserId(principal),
+            accessService,
+            EffectiveSongBookAccess.Editor);
+        if (denial is not null)
+        {
+            return denial;
+        }
+
         try
         {
-            IEnumerable<Song> songs = await songService.GetAllSongsAsync();
-            return Results.Ok(songs);
+            return await songService.UpdateSongAsync(bookId, songId, ToDomain(request, acceptPartIds: true))
+                ? Results.NoContent()
+                : Results.NotFound();
         }
-        catch (Exception ex)
+        catch (ArgumentException exception)
         {
-            logger.LogError(ex, "Exceptions happend when trying to get songs.");
-            return Results.InternalServerError();
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["parts"] = [exception.Message] });
         }
     }
 
-    private static async Task<IResult> GetSongById(
-        Guid id,
-        [FromServices] ISongService songService,
-        [FromServices] ILogger<SongService> logger)
+    private static async Task<IResult> DeleteSong(
+        Guid bookId,
+        Guid songId,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService)
     {
-        try
+        IResult? denial = await RequireAccessAsync(
+            bookId,
+            EndpointHelpers.GetUserId(principal),
+            accessService,
+            EffectiveSongBookAccess.Editor);
+        if (denial is not null)
         {
-            Song? song = await songService.GetSongByIdAsync(id);
-            return song is not null ? Results.Ok(song) : Results.NotFound();
+            return denial;
         }
-        catch (Exception ex)
+
+        return await songService.DeleteSongAsync(bookId, songId)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+
+    private static async Task<IResult?> RequireAccessAsync(
+        Guid bookId,
+        string userId,
+        ISongBookAccessService accessService,
+        EffectiveSongBookAccess minimum)
+    {
+        EffectiveSongBookAccess access = await accessService.GetAccessAsync(bookId, userId);
+        if (access == EffectiveSongBookAccess.None)
         {
-            logger.LogError(ex, "Exceptions happend when trying to get songs.");
-            return Results.InternalServerError();
+            return Results.NotFound();
         }
+        if (access < minimum)
+        {
+            return Results.Forbid();
+        }
+        return null;
     }
 
-    private static async Task<IResult> CreateSong(Song songDto, [FromServices] ISongService songService)
-    {
-        Song? createdSong = await songService.CreateSongAsync(songDto);
-        return createdSong is not null ? Results.Created($"/songs/{createdSong.Id}", createdSong) : Results.BadRequest();
-    }
+    private static DomainSong ToDomain(SongRequest request, bool acceptPartIds) =>
+        new()
+        {
+            Title = request.Title,
+            Author = request.Author,
+            OriginalTitle = request.OriginalTitle,
+            Number = request.Number,
+            Key = request.Key,
+            Tempo = request.Tempo,
+            Parts = request.Parts?.Select(part => new DomainPart
+            {
+                Id = acceptPartIds ? part.Id ?? Guid.Empty : Guid.Empty,
+                Name = part.Name,
+                Text = part.Text
+            }).ToList() ?? []
+        };
 
-    private static async Task<IResult> UpdateSong(Guid id, Song songDto, [FromServices] ISongService songService)
-    {
-        bool updated = await songService.UpdateSongAsync(id, songDto);
-        return updated ? Results.NoContent() : Results.NotFound();
-    }
-
-    private static async Task<IResult> DeleteSong(Guid id, [FromServices] ISongService songService)
-    {
-        bool deleted = await songService.DeleteSongAsync(id);
-        return deleted ? Results.NoContent() : Results.NotFound();
-    }
+    private static SongResponse ToResponse(DomainSong song) =>
+        new(
+            song.Id,
+            song.Title,
+            song.Author,
+            song.OriginalTitle,
+            song.Number,
+            song.Key,
+            song.Tempo,
+            song.Parts
+                .OrderBy(part => part.Position)
+                .Select(part => new PartResponse(part.Id, part.Name, part.Text))
+                .ToList());
 }

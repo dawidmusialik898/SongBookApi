@@ -4,9 +4,9 @@ namespace SongBookApi.Domain.Repositories;
 
 public interface ISongRepository
 {
-    Task<Song?> GetSongByIdAsync(Guid id);
-    Task<IEnumerable<Song>> GetllSongsAsync();
-    Task<Song?> AddSongAsync(Song song);
-    Task<bool> UpdateSongAsync(Song song);
-    Task<bool> DeleteSongAsync(Guid id);
+    Task<IReadOnlyList<Song>> GetAllAsync(Guid songBookId);
+    Task<Song?> GetByIdAsync(Guid songBookId, Guid songId);
+    Task<Song> AddAsync(Guid songBookId, Song song);
+    Task<bool> UpdateAsync(Guid songBookId, Guid songId, Song song);
+    Task<bool> DeleteAsync(Guid songBookId, Guid songId);
 }

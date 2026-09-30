@@ -15,27 +15,32 @@ namespace SongBookApi.Service.Tests;
 
 public class TestApplicationFactory : WebApplicationFactory<Program>
 {
+    internal const string AccountLinkOrigin = "https://localhost:7152";
+
     private readonly SqliteConnection? _connection;
     private readonly string _connectionString;
     private readonly bool _useFixedRemoteIp;
+    private readonly string? _bootstrapSuperUserEmail;
 
     public TestApplicationFactory() : this(useFixedRemoteIp: false)
     {
     }
 
-    internal TestApplicationFactory(bool useFixedRemoteIp)
+    internal TestApplicationFactory(bool useFixedRemoteIp, string? bootstrapSuperUserEmail = null)
     {
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
         _connectionString = _connection.ConnectionString;
         _useFixedRemoteIp = useFixedRemoteIp;
+        _bootstrapSuperUserEmail = bootstrapSuperUserEmail;
     }
 
-    internal TestApplicationFactory(string databasePath)
+    internal TestApplicationFactory(string databasePath, string? bootstrapSuperUserEmail = null)
     {
         _connectionString =
             new SqliteConnectionStringBuilder { DataSource = databasePath }
                 .ConnectionString;
+        _bootstrapSuperUserEmail = bootstrapSuperUserEmail;
     }
 
     public FakeAccountEmailSender EmailSender { get; } = new();
@@ -55,7 +60,8 @@ public class TestApplicationFactory : WebApplicationFactory<Program>
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:SongBookConnection"] = _connectionString,
-                ["DevelopmentStaticFiles:ClientRoot"] = "../../tests/SongBookApi.Service.Tests/Fixtures"
+                ["DevelopmentStaticFiles:ClientRoot"] = "../../tests/SongBookApi.Service.Tests/Fixtures",
+                ["Moderation:BootstrapSuperUserEmail"] = _bootstrapSuperUserEmail
             });
         });
         builder.ConfigureServices(services =>

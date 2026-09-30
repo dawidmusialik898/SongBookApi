@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SongBookApi.Domain.Dto;
@@ -16,6 +17,22 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        builder.Entity<IdentityRole>().HasData(
+            new IdentityRole
+            {
+                Id = "c80415e1-b317-4e0b-a397-748204b72e6b",
+                Name = "SuperUser",
+                NormalizedName = "SUPERUSER",
+                ConcurrencyStamp = "11ab91c7-5f71-4e37-97bd-be19b685157f"
+            },
+            new IdentityRole
+            {
+                Id = "6e0b41f9-7922-4b8b-841c-2b533519d142",
+                Name = "Moderator",
+                NormalizedName = "MODERATOR",
+                ConcurrencyStamp = "12eb6b5b-04ec-4ed1-953a-462540057a5f"
+            });
 
         builder.Entity<SongBook>(entity =>
         {

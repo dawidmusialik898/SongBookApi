@@ -1,0 +1,28 @@
+[Unit]
+Description=SongBook API and client
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=songbook
+Group=songbook
+WorkingDirectory=/opt/songbook/current
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5080
+EnvironmentFile=/etc/songbook/songbook.env
+LoadCredential=Email__Smtp__Password:/etc/songbook/secrets/gmail-app-password
+ExecStart=/usr/bin/dotnet /opt/songbook/current/SongBookApi.Service.dll
+Restart=on-failure
+RestartSec=5
+StateDirectory=songbook
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/songbook
+
+[Install]
+WantedBy=multi-user.target

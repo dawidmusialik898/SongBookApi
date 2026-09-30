@@ -41,6 +41,22 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .HasDatabaseName("RoleNameIndex");
 
                     b.ToTable("AspNetRoles", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = "c80415e1-b317-4e0b-a397-748204b72e6b",
+                            ConcurrencyStamp = "11ab91c7-5f71-4e37-97bd-be19b685157f",
+                            Name = "SuperUser",
+                            NormalizedName = "SUPERUSER"
+                        },
+                        new
+                        {
+                            Id = "6e0b41f9-7922-4b8b-841c-2b533519d142",
+                            ConcurrencyStamp = "12eb6b5b-04ec-4ed1-953a-462540057a5f",
+                            Name = "Moderator",
+                            NormalizedName = "MODERATOR"
+                        });
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -302,6 +318,9 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsBanned")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("LockoutEnabled")

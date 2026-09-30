@@ -15,8 +15,56 @@ dotnet run \
 
 The Development HTTPS origin is `https://localhost:7152`. The API also serves
 the sibling `SongBookClient` entry page and static assets from that origin.
-Migrations are applied automatically at startup. Development confirmation and
-password-reset links are logged; a production email sender is not configured.
+Migrations are applied automatically at startup in Development. Production
+requires a separate `--migrate` step before starting the server. Development
+confirmation and password-reset links are written to the API terminal rather
+than sent as email.
+Open the logged confirmation link to activate a Development account; use
+**Resend confirmation** to generate another link for an existing account.
+
+## Self-hosted release
+
+[The Ubuntu/Debian deployment guide](deploy/README.md) covers packaging the
+sibling client with `./deploy/publish.sh`, running the API behind Caddy and
+systemd, configuring Gmail SMTP and DuckDNS, and checking encrypted off-host
+SQLite/key-ring backups. The published app serves only `wwwroot/index.html`,
+`wwwroot/src/`, and `wwwroot/styles/`; it no longer needs the sibling source
+checkout on the server. Production does not migrate the database on startup.
+Its public `/health` endpoint reports a failure when migrations are pending
+or the last completed off-host backup is more than 24 hours old.
+
+## Production email delivery
+
+Outside Development, the API sends confirmation and password-reset links
+through authenticated SMTP. Supply these settings via environment variables
+or a secrets manager, not committed configuration:
+
+| Setting | Value |
+| --- | --- |
+| `ConnectionStrings__SongBookConnection` | Production SQLite connection string |
+| `AccountLinks__PublicOrigin` | Public HTTPS origin serving the client and `/auth` endpoints |
+| `AllowedHosts` | Deployed host name, or semicolon-separated allowlist (no wildcard) |
+| `DataProtection__KeyDirectory` | Existing protected absolute directory for persistent cookie/reset-token keys |
+| `Backup__SuccessMarkerPath` | Absolute marker path updated only by a successful off-host backup |
+| `Email__Smtp__Host` | SMTP server host name |
+| `Email__Smtp__Port` | `587` for required STARTTLS, or `465` for implicit TLS |
+| `Email__Smtp__UserName` | SMTP login |
+| `Email__Smtp__Password` | SMTP password or app-specific credential; store as a secret |
+| `Email__Smtp__FromAddress` | Verified sender address, e.g. `no-reply@your-domain.example` |
+| `Email__Smtp__FromName` | Optional display name (defaults to `SongBook`) |
+| `Moderation__BootstrapSuperUserEmail` | Email address you control for the first SuperUser; configure before confirming that account |
+
+Set `ASPNETCORE_ENVIRONMENT=Production` and run without the Development
+launch profile. Missing or invalid SMTP configuration fails startup; SMTP
+delivery errors fail the request rather than falsely reporting an email sent.
+For the native Linux deployment, systemd supplies the SMTP password as a
+credential file; no credentials are committed to either repository.
+After fixing a delivery issue, use **Resend confirmation** for an account that
+was already registered. The SMTP server must support authentication over TLS;
+certificate validation is never disabled by the production sender, which
+does not log confirmation or reset links. Configure the sender domain with
+your provider so mail is accepted and delivered, and route the public origin's
+`/auth` paths to this API.
 
 ## Authentication and antiforgery
 
@@ -36,6 +84,51 @@ Account routes remain:
 - `POST /auth/logout`
 - `POST /auth/forgot-password`
 - `POST /auth/reset-password`
+
+`GET /auth/me` returns `isAuthenticated`, `email`, and `role` (`user`,
+`moderator`, or `superuser`; `null` for an anonymous session).
+
+## User management
+
+Configure `Moderation__BootstrapSuperUserEmail` with an email address you
+control (in Development, use an environment variable). Register this account
+normally, follow the emailed confirmation link, and sign in. **Only a
+confirmed account whose email matches this setting becomes the first
+SuperUser**. An existing confirmed account with that email is promoted at
+startup; registration alone never grants privileges. No email or password is
+hard-coded, and a first-registrant claim is not supported. Run the
+`AddUserModeration` migration before using the feature in Production. After
+the first SuperUser exists, changing the setting cannot assign a second one.
+Protect and back up this account: the app has no self-service SuperUser
+transfer or recovery workflow.
+
+The **Manage users** view lists other accounts with their email, role,
+confirmation, and ban status. It does not expose private song books. The
+SuperUser can grant/revoke Moderator access for confirmed, active users, and
+can ban, unban, or delete ordinary users and moderators. Moderators can list
+users and ban, unban, or delete ordinary users only; they cannot assign roles
+or manage another Moderator or the SuperUser. The SuperUser cannot ban,
+demote, or delete themselves; no role can manage a SuperUser account.
+Moderation roles do **not** bypass song-book ownership/access checks.
+
+| Method | Path | Access | Request body | Success |
+| --- | --- | --- | --- | --- |
+| `GET` | `/admin/users` | Moderator/SuperUser | — | `200` user summaries (excluding caller) |
+| `PUT` | `/admin/users/{userId}/role` | SuperUser | `{ "role": "moderator" }` or `{ "role": "user" }` | `204` |
+| `PUT` | `/admin/users/{userId}/ban` | Moderator/SuperUser | `{ "isBanned": true }` or `false` | `204` |
+| `DELETE` | `/admin/users/{userId}` | Moderator/SuperUser | — | `204` |
+
+User IDs are GUIDs. Each summary has `id`, `email`, `role`, `isBanned`,
+and `emailConfirmed`; only the superuser may change roles. Anonymous calls
+return `401`, insufficient privileges return `403`, invalid input returns
+`400`, and unknown accounts return `404`. All mutations need the same
+antiforgery token as song-book mutations. Banning revokes existing sessions
+on the next request and blocks new logins until an authorized unban. Role
+changes revoke existing sessions so the user must sign in again. Deleting an
+account permanently removes its owned books, songs, parts, and collaborator
+access entries in one transaction; it also invalidates that account's
+session. Successful moderation actions are logged with actor/target IDs and
+the action, not account email addresses.
 
 ## Song-book contract
 
@@ -141,14 +234,16 @@ dotnet ef migrations list \
   --context SongBookDbContext
 ```
 
-The 2026-08-31 validation run passed 24 tests. It also completed an external
-HTTPS book/song workflow against a temporary SQLite database, restarted the
-API, and retrieved the persisted session, book, song, and ordered part.
+The 2026-09-30 Release validation passed 61 API tests and 63 client Node
+tests. A packaged Production process served the client and API locally with
+explicit migrations and health checks; SQLite and Data Protection key bytes
+were restored with restic over a local SFTP test server. The home host, trusted
+TLS, real Gmail delivery, off-host restore, monitoring, and rollback still
+require operator verification before real users rely on the service.
 
 `src/SongBookApi.Service/SongBookApi.Service.http` documents executable sample
 requests. `pwsh ./utils/simpleCurl.ps1` exercises the authenticated nested CRUD
 contract for an already confirmed Development account.
 
-Package restore currently reports known high-severity advisories for transitive
-`Microsoft.OpenApi` 2.0.0 and `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. They should
-be upgraded before production use.
+Run `dotnet list SongBookApi.slnx package --vulnerable --include-transitive`
+to verify that the resolved dependency graph has no known vulnerable packages.

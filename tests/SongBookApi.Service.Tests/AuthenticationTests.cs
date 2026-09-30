@@ -39,6 +39,7 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
         }
 
         Uri confirmation = new(_factory.EmailSender.ConfirmationLinkFor(email));
+        Assert.Equal(TestApplicationFactory.AccountLinkOrigin, confirmation.GetLeftPart(UriPartial.Authority));
         using (HttpResponseMessage confirmationResponse = await client.GetAsync(confirmation.PathAndQuery))
         {
             Assert.Equal(HttpStatusCode.Found, confirmationResponse.StatusCode);
@@ -111,6 +112,7 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
         }
 
         Uri reset = new(_factory.EmailSender.PasswordResetLinkFor(email));
+        Assert.Equal(TestApplicationFactory.AccountLinkOrigin, reset.GetLeftPart(UriPartial.Authority));
         Dictionary<string, string> query = reset.Query.TrimStart('?')
             .Split('&', StringSplitOptions.RemoveEmptyEntries)
             .Select(part => part.Split('=', 2))
@@ -139,10 +141,14 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
             Assert.Equal(HttpStatusCode.BadRequest, reusedReset.StatusCode);
         }
 
+        AuthenticatedUserResponse revokedSession = Assert.IsType<AuthenticatedUserResponse>(
+            await client.GetFromJsonAsync<AuthenticatedUserResponse>("/auth/me"));
+        Assert.False(revokedSession.IsAuthenticated);
+
         using (HttpResponseMessage logout = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
                    client, "/auth/logout", new { }))
         {
-            Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, logout.StatusCode);
         }
 
         using HttpResponseMessage oldPasswordLogin = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
@@ -157,6 +163,31 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
         using HttpResponseMessage newPasswordLogin = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
             client, "/auth/login", new { email, password = newPassword, rememberMe = false });
         Assert.Equal(HttpStatusCode.NoContent, newPasswordLogin.StatusCode);
+        using HttpResponseMessage validLogout = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            client, "/auth/logout", new { });
+        Assert.Equal(HttpStatusCode.NoContent, validLogout.StatusCode);
+    }
+
+    [Fact]
+    public async Task UntrustedHostHeader_IsRejected()
+    {
+        using HttpClient client = _factory.CreateSecureClient();
+        using HttpRequestMessage request = new(HttpMethod.Post, "/auth/register")
+        {
+            Content = JsonContent.Create(new
+            {
+                email = $"host-{Guid.NewGuid():N}@example.test",
+                password = AuthenticationTestHelpers.Password
+            })
+        };
+        request.Headers.Host = "attacker.example";
+        request.Headers.Add(
+            "X-CSRF-TOKEN",
+            await AuthenticationTestHelpers.GetAntiforgeryTokenAsync(client));
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

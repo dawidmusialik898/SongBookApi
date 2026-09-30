@@ -1,5 +1,7 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -17,9 +19,29 @@ public static class AuthenticationExtensions
     {
         string configuredConnectionString = configuration.GetConnectionString("SongBookConnection")
             ?? throw new InvalidOperationException("Connection string 'SongBookConnection' is required.");
-        string connectionString = GetConnectionString(configuredConnectionString, environment.ContentRootPath);
+        string connectionString = GetConnectionString(configuredConnectionString, environment);
+        ValidateAllowedHosts(configuration["AllowedHosts"]);
+        ModerationBootstrap.ValidateConfiguration(configuration);
 
         _ = services.AddDbContext<SongBookDbContext>(options => options.UseSqlite(connectionString));
+        if (!environment.IsDevelopment())
+        {
+            string? keyDirectory = configuration["DataProtection:KeyDirectory"];
+            if (string.IsNullOrWhiteSpace(keyDirectory) ||
+                !Path.IsPathFullyQualified(keyDirectory) ||
+                !Directory.Exists(keyDirectory))
+            {
+                throw new InvalidOperationException(
+                    "DataProtection:KeyDirectory must be an existing absolute directory outside Development.");
+            }
+
+            _ = services.AddDataProtection()
+                .SetApplicationName("SongBook")
+                .PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
+        }
+
+        _ = services.AddSingleton(new AccountLinkBuilder(
+            configuration["AccountLinks:PublicOrigin"] ?? string.Empty));
         _ = services
             .AddIdentity<ApplicationUser, IdentityRole>(options =>
             {
@@ -47,6 +69,23 @@ public static class AuthenticationExtensions
             options.Cookie.Domain = null;
             options.SlidingExpiration = true;
             options.ExpireTimeSpan = TimeSpan.FromHours(8);
+            options.Events.OnValidatePrincipal = async context =>
+            {
+                await SecurityStampValidator.ValidatePrincipalAsync(context);
+                if (context.Principal?.Identity?.IsAuthenticated != true)
+                {
+                    return;
+                }
+
+                UserManager<ApplicationUser> userManager = context.HttpContext
+                    .RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+                ApplicationUser? user = await userManager.GetUserAsync(context.Principal);
+                if (user is null || user.IsBanned)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                }
+            };
             options.Events.OnRedirectToLogin = context =>
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -58,10 +97,16 @@ public static class AuthenticationExtensions
                 return Task.CompletedTask;
             };
         });
+        _ = services.Configure<SecurityStampValidatorOptions>(options =>
+            options.ValidationInterval = TimeSpan.Zero);
 
         _ = services.AddAuthorizationBuilder()
             .AddPolicy(AuthConstants.AuthenticatedUserPolicy, policy =>
-                policy.RequireAuthenticatedUser());
+                policy.RequireAuthenticatedUser())
+            .AddPolicy(AuthConstants.ModeratorPolicy, policy =>
+                policy.RequireRole(AuthConstants.ModeratorRole, AuthConstants.SuperUserRole))
+            .AddPolicy(AuthConstants.SuperUserPolicy, policy =>
+                policy.RequireRole(AuthConstants.SuperUserRole));
 
         _ = services.AddAntiforgery(options =>
         {
@@ -86,19 +131,42 @@ public static class AuthenticationExtensions
         }
         else
         {
-            throw new InvalidOperationException(
-                "A production IAccountEmailSender must be configured before running outside Development.");
+            _ = services.AddSingleton<IAccountEmailSender>(new SmtpAccountEmailSender(configuration));
         }
 
         return services;
     }
 
-    private static string GetConnectionString(string configuredConnectionString, string contentRootPath)
+    private static void ValidateAllowedHosts(string? configuredAllowedHosts)
+    {
+        string[] allowedHosts = (configuredAllowedHosts ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (allowedHosts.Length == 0 ||
+            allowedHosts.Any(host => host is "*" or "0.0.0.0" or "[::]"))
+        {
+            throw new InvalidOperationException(
+                "AllowedHosts must list the deployed host names and must not disable host filtering.");
+        }
+    }
+
+    private static string GetConnectionString(
+        string configuredConnectionString,
+        IHostEnvironment environment)
     {
         SqliteConnectionStringBuilder builder = new(configuredConnectionString);
-        if (builder.DataSource is not ":memory:" && !Path.IsPathRooted(builder.DataSource))
+        if (!environment.IsDevelopment())
         {
-            builder.DataSource = Path.GetFullPath(builder.DataSource, contentRootPath);
+            if (builder.DataSource is ":memory:" ||
+                !Path.IsPathFullyQualified(builder.DataSource) ||
+                !Directory.Exists(Path.GetDirectoryName(builder.DataSource)))
+            {
+                throw new InvalidOperationException(
+                    "Production SQLite Data Source must be a file in an existing directory, using an absolute path.");
+            }
+        }
+        else if (builder.DataSource is not ":memory:" && !Path.IsPathRooted(builder.DataSource))
+        {
+            builder.DataSource = Path.GetFullPath(builder.DataSource, environment.ContentRootPath);
             Directory.CreateDirectory(Path.GetDirectoryName(builder.DataSource)!);
         }
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=Update the SongBook DuckDNS address
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=true
+LoadCredential=duckdns-curl.conf:/etc/songbook/secrets/duckdns-curl.conf
+ExecStart=/usr/local/libexec/songbook/duckdns-update.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict

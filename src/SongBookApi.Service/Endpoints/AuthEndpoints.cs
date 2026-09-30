@@ -53,18 +53,23 @@ public static class AuthEndpoints
     {
         if (principal.Identity?.IsAuthenticated != true)
         {
-            return Results.Ok(new AuthenticatedUserResponse(false, null));
+            return Results.Ok(new AuthenticatedUserResponse(false, null, null));
         }
 
         ApplicationUser? user = await userManager.GetUserAsync(principal);
         return Results.Ok(new AuthenticatedUserResponse(
             user is not null,
-            user is null ? null : await userManager.GetEmailAsync(user)));
+            user is null ? null : await userManager.GetEmailAsync(user),
+            user is null ? null : principal.IsInRole(AuthConstants.SuperUserRole)
+                ? "superuser"
+                : principal.IsInRole(AuthConstants.ModeratorRole)
+                    ? "moderator"
+                    : "user"));
     }
 
     private static async Task<IResult> Register(
         RegisterRequest request,
-        HttpRequest httpRequest,
+        AccountLinkBuilder accountLinks,
         UserManager<ApplicationUser> userManager,
         IAccountEmailSender emailSender)
     {
@@ -81,7 +86,7 @@ public static class AuthEndpoints
         }
 
         string code = EncodeToken(await userManager.GenerateEmailConfirmationTokenAsync(user));
-        string link = BuildLink(httpRequest, "/auth/confirm-email", new Dictionary<string, string?>
+        string link = accountLinks.BuildLink("/auth/confirm-email", new Dictionary<string, string?>
         {
             ["userId"] = user.Id,
             ["code"] = code
@@ -93,7 +98,8 @@ public static class AuthEndpoints
     private static async Task<IResult> ConfirmEmail(
         string? userId,
         string? code,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        IConfiguration configuration)
     {
         if (string.IsNullOrWhiteSpace(userId) || !TryDecodeToken(code, out string token))
         {
@@ -107,6 +113,10 @@ public static class AuthEndpoints
         }
 
         IdentityResult result = await userManager.ConfirmEmailAsync(user, token);
+        if (result.Succeeded)
+        {
+            await ModerationBootstrap.PromoteConfirmedUserAsync(configuration, userManager);
+        }
         return Results.Redirect(result.Succeeded
             ? "/?auth=confirmed"
             : "/?auth=confirmation-failed");
@@ -114,7 +124,7 @@ public static class AuthEndpoints
 
     private static async Task<IResult> ResendConfirmation(
         EmailRequest request,
-        HttpRequest httpRequest,
+        AccountLinkBuilder accountLinks,
         UserManager<ApplicationUser> userManager,
         IAccountEmailSender emailSender)
     {
@@ -124,7 +134,7 @@ public static class AuthEndpoints
             if (user is not null && !await userManager.IsEmailConfirmedAsync(user))
             {
                 string code = EncodeToken(await userManager.GenerateEmailConfirmationTokenAsync(user));
-                string link = BuildLink(httpRequest, "/auth/confirm-email", new Dictionary<string, string?>
+                string link = accountLinks.BuildLink("/auth/confirm-email", new Dictionary<string, string?>
                 {
                     ["userId"] = user.Id,
                     ["code"] = code
@@ -138,6 +148,7 @@ public static class AuthEndpoints
 
     private static async Task<IResult> Login(
         LoginRequest request,
+        UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager)
     {
         if (!TryGetEmail(request.Email, out string email) || string.IsNullOrEmpty(request.Password))
@@ -145,8 +156,14 @@ public static class AuthEndpoints
             return Results.Unauthorized();
         }
 
+        ApplicationUser? user = await userManager.FindByEmailAsync(email);
+        if (user is null || user.IsBanned)
+        {
+            return Results.Unauthorized();
+        }
+
         SignInResult result = await signInManager.PasswordSignInAsync(
-            email,
+            user,
             request.Password,
             request.RememberMe,
             lockoutOnFailure: true);
@@ -161,7 +178,7 @@ public static class AuthEndpoints
 
     private static async Task<IResult> ForgotPassword(
         EmailRequest request,
-        HttpRequest httpRequest,
+        AccountLinkBuilder accountLinks,
         UserManager<ApplicationUser> userManager,
         IAccountEmailSender emailSender)
     {
@@ -171,7 +188,7 @@ public static class AuthEndpoints
             if (user is not null && await userManager.IsEmailConfirmedAsync(user))
             {
                 string code = EncodeToken(await userManager.GeneratePasswordResetTokenAsync(user));
-                string link = BuildLink(httpRequest, "/", new Dictionary<string, string?>
+                string link = accountLinks.BuildLink("/", new Dictionary<string, string?>
                 {
                     ["auth"] = "reset-password",
                     ["email"] = email,
@@ -232,12 +249,6 @@ public static class AuthEndpoints
             return false;
         }
     }
-
-    private static string BuildLink(
-        HttpRequest request,
-        string path,
-        IDictionary<string, string?> query) =>
-        QueryHelpers.AddQueryString($"{request.Scheme}://{request.Host}{path}", query);
 
     private static IResult IdentityValidationProblem(IdentityResult result)
     {

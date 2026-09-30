@@ -115,7 +115,7 @@ test("admin creates, renames, shares, and deletes a song book", async () => {
     assert.equal(app.state.selectedSongBookAccessLevel, "admin")
     assert.deepEqual(
         browser.getSongBookSummaries(),
-        ["Sunday Service (Admin, 0 songs)"]
+        ["Sunday Service"]
     )
     assert.equal(
         browser.getElement("selected-song-book-heading").textContent,
@@ -129,7 +129,7 @@ test("admin creates, renames, shares, and deletes a song book", async () => {
     assert.equal(app.state.selectedSongBook.name, "Evening Service")
     assert.deepEqual(
         browser.getSongBookSummaries(),
-        ["Evening Service (Admin, 0 songs)"]
+        ["Evening Service"]
     )
 
     browser.getElement("song-book-access-email").value =

@@ -19,17 +19,60 @@ This stage follows the mandatory
 
 ### Status and blocking rule
 
-Points 01-12 are complete. This stage remains **decision-blocked** because an
-AI model must not implement production infrastructure or migrate providers by
-selecting hosting, database, email, secret, monitoring, and recovery services
-on the user's behalf.
+Points 01-12 are complete. The user approved the small self-hosted deployment
+recorded below. The packaging, service configuration, and local verification
+are implemented; provisioning the home host and verifying real HTTPS, email,
+off-host recovery, browser behavior, and alerts remain outstanding. This is
+not yet a production-ready deployment.
 
-The first deliverable is a decision record and a provider-specific
-implementation plan. Code changes begin only after the user approves it.
+The decision record and file-level implementation plan below were approved
+before these changes. A different provider or security topology requires
+separate approval.
+
+### Approved small-site deployment (2026-09-30)
+
+This is a best-effort, zero-cost deployment for a hobby site with a few users,
+not a high-availability service. No private host names, account identifiers,
+credentials, or tokens belong in either repository.
+
+| Decision | Selected approach |
+| --- | --- |
+| Host and topology | One existing Ubuntu/Debian machine running a native .NET 10 service, bound to loopback; only Caddy receives forwarded router ports 80/443. |
+| Public origin and TLS | A free DuckDNS hostname with automatic IP updates; Caddy obtains and renews a trusted certificate. Both the client and API use that one HTTPS origin. |
+| Database | A new SQLite database in a service-account-owned persistent directory; exactly one application instance. Do not reuse the Development database. |
+| Email | A dedicated Gmail account using authenticated TLS SMTP and a 2-Step-Verification app password for low-volume confirmation/reset messages. Sending limits and deliverability are best-effort. |
+| Secrets | Root-owned files outside source control delivered to the service via systemd credentials; nonsecret per-host settings stay outside the release artifact. |
+| Data Protection | A persistent, service-account-only key directory on the same host, backed up alongside the database. |
+| Recovery | Consistent SQLite backups twice daily to a second machine, 30 days of retention, up to 24 hours of acceptable data loss, and a tested restore. |
+| Monitoring | Public, non-sensitive health response and local journal logs; a free UptimeRobot check alerts the operator's own mailbox. |
+| Delivery | Repeatable Release publish of both repositories into one artifact; manual SSH promotion through systemd with a previous release available for rollback. |
+
+The operator must provision the machine, router forwarding, DuckDNS, Gmail,
+backup machine, and external monitor. Port-forwarding, certificate issuance,
+email delivery, off-host backup/restore, and public browser behavior must be
+verified before real users depend on the site.
+
+### Approved file-level implementation plan
+
+1. Update `SongBookApi/src/SongBookApi.Service/Program.cs` and its authentication
+   setup to load production credentials, serve packaged client assets only,
+   trust only the loopback reverse proxy, persist Data Protection keys, expose
+   a health check, return safe errors/security headers, and make production
+   SQLite migrations an explicit pre-start command. Preserve Development
+   startup and the existing cookie/antiforgery/authorization behavior.
+2. Add a reproducible API-side Release publish step that packages
+   `SongBookClient/index.html`, `src/`, and `styles/` without a frontend
+   package manager. Add host templates and scripts for systemd, Caddy,
+   DuckDNS updates, backup/restore, manual deployment, and rollback. Secrets
+   and deployment-specific names remain on the host.
+3. Add backend production-hosting and configuration tests. Update the API
+   README and this guide with setup, validation, and operator steps; do not
+   change client API routes or introduce a split-origin deployment.
 
 ### Required decisions
 
-Ask these one at a time, using recommended choices where appropriate:
+The approved deployment resolves these choices; revisit them only if the
+deployment requirements change:
 
 1. **Hosting target:** which provider/runtime/container environment?
 2. **Application database:** SQLite for one durable instance, or managed
@@ -42,7 +85,7 @@ Ask these one at a time, using recommended choices where appropriate:
 7. **Monitoring:** who receives health/error alerts?
 8. **Delivery:** manual release, provider integration, or CI/CD workflow?
 
-If the user wants a recommended small-app baseline, propose:
+The approved shape follows this small-app baseline:
 
 ```text
 one HTTPS origin
@@ -58,7 +101,7 @@ health check and structured logs
 repeatable deployment from a protected branch
 ```
 
-This is a proposal, not permission to implement.
+Other deployment shapes need a separate decision record and approval.
 
 ### Decision record requirements
 
@@ -150,12 +193,12 @@ the repository.
 
 The release is blocked unless:
 
-- [ ] `dotnet list package --vulnerable --include-transitive` has no
-      unaccepted high/critical issue. The baseline `Microsoft.OpenApi` warning
-      must be resolved or explicitly risk-accepted with an upgrade plan.
-- [ ] Durable CRUD and migration tests pass.
+- [x] `dotnet list package --vulnerable --include-transitive` reported no
+      vulnerable packages for the service and its transitive dependencies in
+      the 2026-09-30 local scan. Repeat the scan before deployment.
+- [x] Durable CRUD and migration tests pass locally.
 - [ ] A backup has been restored successfully.
-- [ ] Authorization tests prove private book isolation and the full
+- [x] Authorization tests prove private book isolation and the full
       Reader/Editor/Admin matrix.
 - [ ] Production contains no localhost URL, development certificate, or
       wildcard origin.
@@ -163,6 +206,14 @@ The release is blocked unless:
 - [ ] Staging passes the point-10 CRUD/accessibility, point-11 authentication,
       and point-12 authorization matrices.
 - [ ] Health checks, logs, alerts, and rollback have been exercised.
+
+The local backup rehearsal restored SQLite rows and Data Protection key bytes
+using real `sqlite3` and restic over a local SFTP server; it does **not**
+satisfy the separate off-host restore gate above. The 2026-09-30 Release API
+suite passed 61 tests, the client Node suites passed 63, and a packaged
+Production process served the client, applied migrations separately,
+rejected unexpected hosts, and reported `503` for missing/stale backups.
+Follow the sibling API repository's `deploy/README.md` for the host checklist.
 
 ### Validation commands
 

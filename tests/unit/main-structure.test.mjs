@@ -37,7 +37,11 @@ test("state and rendering remain explicit and loading is visible", async () => {
         "notice",
         "auth",
         "authView",
-        "isAuthPending"
+        "isAuthPending",
+        "managedUsers",
+        "showUserManagement",
+        "isLoadingManagedUsers",
+        "mutatingManagedUserId"
     ])
     assert.equal(app.state.isLoadingSongs, true)
     assert.equal(browser.getButton("Refresh songs").disabled, true)

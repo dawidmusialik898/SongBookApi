@@ -62,7 +62,10 @@ test("book switching is blocked while collaborator access is saving", async () =
     const app = await import("../../src/main.js")
     await app.initialization
 
-    await browser.getButtons("Open")[0].click()
+    await browser.findElements(element =>
+        element.dataset?.action === "select-song-book" &&
+        element.dataset.songBookId === "book-1"
+    )[0].click()
     browser.getElement("song-book-access-email").value =
         "reader@example.com"
     const save = browser.getElement("song-book-access-form").submit()

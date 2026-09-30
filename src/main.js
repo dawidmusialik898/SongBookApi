@@ -29,6 +29,12 @@ import {
     resetAntiforgeryToken
 } from "./httpClient.js"
 import {
+    deleteManagedUser,
+    getManagedUsers,
+    setManagedUserBan,
+    setManagedUserRole
+} from "./moderationApi.js"
+import {
     buildSongPayload,
     createPartDraft,
     populateSongForm,
@@ -59,10 +65,15 @@ export const state = {
     notice: null,
     auth: {
         status: "loading",
-        email: null
+        email: null,
+        role: null
     },
     authView: "none",
-    isAuthPending: false
+    isAuthPending: false,
+    managedUsers: [],
+    showUserManagement: false,
+    isLoadingManagedUsers: false,
+    mutatingManagedUserId: null
 }
 
 const NOTICE_TYPES = new Set(["info", "success", "error"])
@@ -82,8 +93,27 @@ let songBookMembersRequestId = 0
 let songBookAccessMutationId = 0
 let songBookMutationId = 0
 let songMutationId = 0
+let managedUserListRequestId = 0
+let managedUserMutationId = 0
+let managedUserListLoadFailed = false
 
 const elements = {
+    songActions: document.getElementById("song-actions"),
+    songBooksPanel: document.getElementById("song-books-panel"),
+    songBookContent: document.getElementById("song-book-content"),
+    manageUsersButton: document.getElementById("manage-users-button"),
+    moderationPanel: document.getElementById("moderation-panel"),
+    moderationHeading: document.getElementById("moderation-heading"),
+    closeModerationButton: document.getElementById(
+        "close-moderation-button"
+    ),
+    refreshManagedUsersButton: document.getElementById(
+        "refresh-managed-users-button"
+    ),
+    moderationListState: document.getElementById(
+        "moderation-list-state"
+    ),
+    moderationList: document.getElementById("moderation-list"),
     newSongBookButton: document.getElementById("new-song-book-button"),
     refreshSongBooksButton: document.getElementById(
         "refresh-song-books-button"
@@ -208,15 +238,22 @@ elements.refreshSongBooksButton.addEventListener(
     "click",
     () => loadSongBooks()
 )
-elements.songBookList.addEventListener("click", async event => {
-    if (event.target.dataset?.action !== "select-song-book") {
-        return
-    }
-
-    await selectSongBook(event.target.dataset.songBookId, {
-        focusHeading: true
-    })
-})
+elements.manageUsersButton.addEventListener(
+    "click",
+    openUserManagement
+)
+elements.closeModerationButton.addEventListener(
+    "click",
+    closeUserManagement
+)
+elements.refreshManagedUsersButton.addEventListener(
+    "click",
+    loadManagedUsers
+)
+elements.moderationList.addEventListener(
+    "click",
+    handleManagedUserAction
+)
 elements.songBookForm.addEventListener("submit", saveSongBook)
 elements.cancelSongBookButton.addEventListener(
     "click",
@@ -333,7 +370,10 @@ export async function loadAuthState() {
     const requestGeneration = ++authGeneration
     state.auth.status = "loading"
     state.auth.email = null
+    state.auth.role = null
     authLoadFailed = false
+    clearUserManagement()
+    renderUserManagement()
     renderAuth()
 
     try {
@@ -352,6 +392,10 @@ export async function loadAuthState() {
             typeof currentUser.email === "string"
             ? currentUser.email
             : null
+        state.auth.role = isAuthenticated &&
+            ["user", "moderator", "superuser"].includes(currentUser.role)
+            ? currentUser.role
+            : null
 
         if (!isAuthenticated) {
             clearPrivateState()
@@ -365,6 +409,7 @@ export async function loadAuthState() {
 
         state.auth.status = "anonymous"
         state.auth.email = null
+        state.auth.role = null
         authLoadFailed = true
 
         clearPrivateState()
@@ -373,6 +418,7 @@ export async function loadAuthState() {
     } finally {
         if (requestGeneration === authGeneration) {
             renderAuth()
+            renderUserManagement()
             renderSongBookList()
             renderSongBookState()
             renderSelectedSongBook()
@@ -707,6 +753,324 @@ async function runAuthAction(action) {
         state.isAuthPending = false
         renderAuth()
     }
+}
+
+export async function openUserManagement() {
+    if (!canModerateUsers() || state.showUserManagement) {
+        return false
+    }
+
+    state.showUserManagement = true
+    setNotice(null)
+    renderAuth()
+    renderUserManagement()
+    renderNotice()
+    elements.moderationHeading.focus()
+    return loadManagedUsers()
+}
+
+export function closeUserManagement() {
+    if (
+        !state.showUserManagement ||
+        state.mutatingManagedUserId !== null
+    ) {
+        return false
+    }
+
+    clearUserManagement()
+    renderAuth()
+    renderUserManagement()
+    elements.manageUsersButton.focus()
+    return true
+}
+
+export async function loadManagedUsers() {
+    if (
+        !canModerateUsers() ||
+        !state.showUserManagement ||
+        state.isLoadingManagedUsers ||
+        state.mutatingManagedUserId !== null
+    ) {
+        return false
+    }
+
+    const requestId = ++managedUserListRequestId
+    const requestAuthGeneration = authGeneration
+    state.isLoadingManagedUsers = true
+    managedUserListLoadFailed = false
+    renderUserManagement()
+
+    try {
+        const users = readManagedUsers(await getManagedUsers())
+        if (
+            requestId !== managedUserListRequestId ||
+            requestAuthGeneration !== authGeneration
+        ) {
+            return false
+        }
+
+        state.managedUsers = users
+        return true
+    } catch (error) {
+        if (
+            requestId !== managedUserListRequestId ||
+            requestAuthGeneration !== authGeneration
+        ) {
+            return false
+        }
+
+        if (await handleAuthenticationFailure(error)) {
+            return false
+        }
+
+        if (error instanceof ApiError && error.status === 403) {
+            await loadAuthState()
+        } else {
+            console.error(error)
+        }
+
+        state.managedUsers = []
+        managedUserListLoadFailed = true
+        setNotice(
+            "error",
+            "Users could not be loaded. Check your access and try again."
+        )
+        renderNotice()
+        return false
+    } finally {
+        if (requestId === managedUserListRequestId) {
+            state.isLoadingManagedUsers = false
+            renderUserManagement()
+            renderNotice()
+        }
+    }
+}
+
+async function handleManagedUserAction(event) {
+    const action = event.target.dataset?.action
+    const userId = event.target.dataset?.userId
+    const user = state.managedUsers.find(
+        candidate => candidate.id === userId
+    )
+    const canManageTarget =
+        user?.role !== "superuser" &&
+        (
+            state.auth.role === "superuser" ||
+            user?.role === "user"
+        )
+    const canChangeRole =
+        state.auth.role === "superuser" &&
+        user?.role !== "superuser"
+    const isRoleAction = [
+        "grant-moderator",
+        "remove-moderator"
+    ].includes(action)
+
+    if (
+        !state.showUserManagement ||
+        !canModerateUsers() ||
+        state.isLoadingManagedUsers ||
+        state.mutatingManagedUserId !== null ||
+        user === undefined ||
+        !canManageTarget ||
+        (
+            isRoleAction
+                ? !canChangeRole ||
+                    (
+                        action === "grant-moderator" &&
+                        (user.isBanned || !user.emailConfirmed)
+                    )
+                : !["ban-user", "unban-user", "delete-user"].includes(
+                    action
+                )
+        )
+    ) {
+        return false
+    }
+
+    const email = displayValue(user.email, "this account")
+    const confirmations = {
+        "grant-moderator":
+            `Allow ${email} to ban and delete other users?`,
+        "remove-moderator":
+            `Remove Moderator access from ${email}?`,
+        "ban-user":
+            `Ban ${email}? Their active sessions will end.`,
+        "delete-user":
+            `Permanently delete ${email} and all of their song books ` +
+                "and songs? This cannot be undone."
+    }
+
+    if (
+        confirmations[action] !== undefined &&
+        !window.confirm(confirmations[action])
+    ) {
+        event.target.focus()
+        return false
+    }
+
+    const mutationId = ++managedUserMutationId
+    const requestAuthGeneration = authGeneration
+    state.mutatingManagedUserId = userId
+    setNotice("info", "Updating account...")
+    renderUserManagement()
+    renderNotice()
+
+    try {
+        if (action === "delete-user") {
+            await deleteManagedUser(userId)
+        } else if (isRoleAction) {
+            await setManagedUserRole(
+                userId,
+                action === "grant-moderator" ? "moderator" : "user"
+            )
+        } else {
+            await setManagedUserBan(userId, action === "ban-user")
+        }
+
+        if (
+            mutationId !== managedUserMutationId ||
+            requestAuthGeneration !== authGeneration
+        ) {
+            return false
+        }
+
+        const messages = {
+            "grant-moderator": "Moderator access granted.",
+            "remove-moderator": "Moderator access removed.",
+            "ban-user": "Account banned.",
+            "unban-user": "Account unbanned.",
+            "delete-user": "Account and its song books deleted."
+        }
+
+        try {
+            state.managedUsers = readManagedUsers(
+                await getManagedUsers()
+            )
+            if (
+                mutationId !== managedUserMutationId ||
+                requestAuthGeneration !== authGeneration
+            ) {
+                return false
+            }
+
+            managedUserListLoadFailed = false
+            setNotice("success", messages[action])
+        } catch (error) {
+            if (
+                mutationId !== managedUserMutationId ||
+                requestAuthGeneration !== authGeneration
+            ) {
+                return false
+            }
+
+            if (await handleAuthenticationFailure(error)) {
+                return false
+            }
+
+            if (error instanceof ApiError && error.status === 403) {
+                await loadAuthState()
+            } else {
+                console.error(error)
+            }
+            state.managedUsers = []
+            managedUserListLoadFailed = true
+            setNotice(
+                "error",
+                `${messages[action]} The user list could not be refreshed.`
+            )
+            renderNotice()
+        }
+
+        return true
+    } catch (error) {
+        if (
+            mutationId !== managedUserMutationId ||
+            requestAuthGeneration !== authGeneration
+        ) {
+            return false
+        }
+
+        if (await handleAuthenticationFailure(error)) {
+            return false
+        }
+
+        if (error instanceof ApiError && error.status === 403) {
+            await loadAuthState()
+            setNotice(
+                "error",
+                "You cannot manage this account. Access may have changed."
+            )
+        } else if (error instanceof ApiError && error.status === 404) {
+            state.managedUsers = state.managedUsers.filter(
+                candidate => candidate.id !== userId
+            )
+            setNotice(
+                "error",
+                "This account no longer exists. Refresh users."
+            )
+        } else {
+            console.error(error)
+            const detail = error instanceof ApiError &&
+                error.status === 400
+                ? getSafeApiDetail(error)
+                : null
+            setNotice(
+                "error",
+                detail === null
+                    ? "The account could not be updated. Try again."
+                    : `The account could not be updated. ${toSentence(
+                        detail
+                    )}`
+            )
+        }
+
+        renderNotice()
+        return false
+    } finally {
+        if (mutationId === managedUserMutationId) {
+            state.mutatingManagedUserId = null
+            renderUserManagement()
+            renderNotice()
+
+            if (state.showUserManagement) {
+                const nextButton = findDescendant(
+                    elements.moderationList,
+                    element => element.dataset?.userId === userId
+                )
+                const focusTarget =
+                    nextButton ?? elements.moderationHeading
+                focusTarget.focus()
+            }
+        }
+    }
+}
+
+function readManagedUsers(value) {
+    if (!Array.isArray(value) || !value.every(user =>
+        user !== null &&
+        typeof user === "object" &&
+        typeof user.id === "string" &&
+        user.id.trim() !== "" &&
+        (user.email === null || typeof user.email === "string") &&
+        ["user", "moderator", "superuser"].includes(user.role) &&
+        typeof user.isBanned === "boolean" &&
+        typeof user.emailConfirmed === "boolean"
+    )) {
+        throw new ApiError("The API returned an invalid user list.")
+    }
+
+    return value
+}
+
+function clearUserManagement() {
+    managedUserListRequestId += 1
+    managedUserMutationId += 1
+    managedUserListLoadFailed = false
+    state.managedUsers = []
+    state.showUserManagement = false
+    state.isLoadingManagedUsers = false
+    state.mutatingManagedUserId = null
 }
 
 export async function loadSongBooks({
@@ -1558,17 +1922,27 @@ export function renderSongBookList() {
 
         const summary = document.createElement("span")
         summary.className = "song-book-list__summary"
-        summary.textContent = `${displayValue(
+        summary.textContent = displayValue(
             songBook.name,
             "Untitled song book"
-        )} (${formatAccessLevel(songBook.accessLevel)}, ` +
-            `${Number(songBook.songCount ?? 0)} songs)`
+        )
+
+        const meta = document.createElement("span")
+        meta.className = "song-book-list__meta"
+        meta.textContent = `${formatAccessLevel(
+            songBook.accessLevel
+        )}, ${Number(songBook.songCount ?? 0)} songs`
 
         const selectButton = document.createElement("button")
-        selectButton.className = "button button--neutral"
+        selectButton.className = "song-book-list__button"
         selectButton.type = "button"
         selectButton.dataset.action = "select-song-book"
         selectButton.dataset.songBookId = songBook.id
+        selectButton.setAttribute(
+            "aria-label",
+            `${selected ? "Selected" : "Open"} ${summary.textContent}, ` +
+                meta.textContent
+        )
         selectButton.disabled =
             state.isLoadingSongBook ||
             state.isLoadingSongs ||
@@ -1576,20 +1950,18 @@ export function renderSongBookList() {
             state.isSavingSongBookAccess ||
             state.isSaving ||
             state.deletingSongId !== null
-        selectButton.textContent = selected ? "Selected" : "Open"
-        selectButton.setAttribute(
-            "aria-label",
-            `${selected ? "Selected" : "Open"} ${displayValue(
-                songBook.name,
-                "untitled song book"
-            )}`
-        )
 
         if (selected) {
             selectButton.setAttribute("aria-current", "true")
         }
 
-        listItem.appendChild(summary)
+        selectButton.addEventListener("click", async event => {
+            await selectSongBook(event.currentTarget.dataset.songBookId, {
+                focusHeading: true
+            })
+        })
+        selectButton.appendChild(summary)
+        selectButton.appendChild(meta)
         listItem.appendChild(selectButton)
         elements.songBookList.appendChild(listItem)
     }
@@ -2521,20 +2893,28 @@ export function renderSongDetails() {
 export function renderAuth() {
     const authenticated = isAuthenticated()
     const anonymous = state.auth.status === "anonymous"
+    const roleLabel = state.auth.role === "superuser"
+        ? " (SuperUser)"
+        : state.auth.role === "moderator"
+            ? " (Moderator)"
+            : ""
 
     elements.authSummary.textContent = state.auth.status === "loading"
         ? "Checking session..."
         : authenticated
-            ? `Signed in as ${state.auth.email ?? "account user"}.`
+            ? `Signed in as ${state.auth.email ?? "account user"}${roleLabel}.`
             : authLoadFailed
                 ? "Session unavailable. Private song books are hidden."
                 : "Not signed in."
     elements.showLoginButton.hidden = !anonymous
     elements.showRegisterButton.hidden = !anonymous
     elements.logoutButton.hidden = !authenticated
+    elements.manageUsersButton.hidden = !canModerateUsers()
     elements.showLoginButton.disabled = state.isAuthPending
     elements.showRegisterButton.disabled = state.isAuthPending
     elements.logoutButton.disabled = state.isAuthPending
+    elements.manageUsersButton.disabled =
+        state.isAuthPending || state.showUserManagement
     elements.authPanel.hidden = state.authView === "none"
     elements.authPanel.setAttribute(
         "aria-busy",
@@ -2571,6 +2951,129 @@ export function renderAuth() {
     elements.writeAccessMessage.hidden =
         canManageSongs() || state.auth.status === "loading"
     renderSongBookControls()
+}
+
+export function renderUserManagement() {
+    const active = state.showUserManagement && canModerateUsers()
+    const busy = state.isLoadingManagedUsers ||
+        state.mutatingManagedUserId !== null
+    elements.moderationPanel.hidden = !active
+    elements.songActions.hidden = active
+    elements.songBooksPanel.hidden = active
+    elements.songBookContent.hidden = active
+    elements.moderationList.setAttribute("aria-busy", String(busy))
+    elements.refreshManagedUsersButton.disabled = busy
+    elements.closeModerationButton.disabled =
+        state.mutatingManagedUserId !== null
+    elements.moderationList.replaceChildren()
+
+    if (!active) {
+        elements.moderationListState.textContent = ""
+        return
+    }
+
+    if (state.isLoadingManagedUsers) {
+        elements.moderationListState.textContent =
+            "Loading users..."
+    } else if (managedUserListLoadFailed) {
+        elements.moderationListState.textContent =
+            "Users could not be loaded. Try Refresh users."
+    } else if (state.managedUsers.length === 0) {
+        elements.moderationListState.textContent =
+            "No other users."
+    } else {
+        elements.moderationListState.textContent = ""
+    }
+
+    for (const user of state.managedUsers) {
+        const item = document.createElement("li")
+        item.className = "moderation-list__item"
+
+        const summary = document.createElement("span")
+        summary.className = "moderation-list__summary"
+        const email = document.createElement("strong")
+        email.textContent = displayValue(user.email, "Account without email")
+        const status = document.createElement("span")
+        status.textContent = `${user.role === "superuser"
+            ? "SuperUser"
+            : user.role === "moderator"
+                ? "Moderator"
+                : "User"} - ${user.isBanned
+            ? "Banned"
+            : user.emailConfirmed
+                ? "Active"
+                : "Unconfirmed"}`
+        summary.appendChild(email)
+        summary.appendChild(status)
+        item.appendChild(summary)
+
+        const canManageTarget = user.role !== "superuser" &&
+            (
+                state.auth.role === "superuser" ||
+                user.role === "user"
+            )
+
+        if (canManageTarget) {
+            const actions = document.createElement("div")
+            actions.className = "moderation-list__actions"
+
+            if (state.auth.role === "superuser" &&
+                (
+                    user.role === "moderator" ||
+                    (!user.isBanned && user.emailConfirmed)
+                )) {
+                const roleButton = document.createElement("button")
+                roleButton.className = "button button--neutral"
+                roleButton.type = "button"
+                roleButton.dataset.action = user.role === "moderator"
+                    ? "remove-moderator"
+                    : "grant-moderator"
+                roleButton.dataset.userId = user.id
+                roleButton.textContent = user.role === "moderator"
+                    ? "Remove moderator"
+                    : "Make moderator"
+                roleButton.disabled = busy
+                roleButton.setAttribute(
+                    "aria-label",
+                    `${roleButton.textContent}: ${email.textContent}`
+                )
+                actions.appendChild(roleButton)
+            }
+
+            const banButton = document.createElement("button")
+            banButton.className = user.isBanned
+                ? "button button--neutral"
+                : "button button--destructive"
+            banButton.type = "button"
+            banButton.dataset.action = user.isBanned
+                ? "unban-user"
+                : "ban-user"
+            banButton.dataset.userId = user.id
+            banButton.textContent = user.isBanned ? "Unban" : "Ban"
+            banButton.disabled = busy
+            banButton.setAttribute(
+                "aria-label",
+                `${banButton.textContent}: ${email.textContent}`
+            )
+            actions.appendChild(banButton)
+
+            const deleteButton = document.createElement("button")
+            deleteButton.className = "button button--destructive"
+            deleteButton.type = "button"
+            deleteButton.dataset.action = "delete-user"
+            deleteButton.dataset.userId = user.id
+            deleteButton.textContent = "Delete user"
+            deleteButton.disabled = busy
+            deleteButton.setAttribute(
+                "aria-label",
+                `Delete user: ${email.textContent}`
+            )
+            actions.appendChild(deleteButton)
+            item.appendChild(actions)
+        }
+
+        elements.moderationList.appendChild(item)
+    }
 }
 
 export function renderCollectionState() {
@@ -3156,6 +3659,11 @@ function isAuthenticated() {
     return state.auth.status === "authenticated"
 }
 
+function canModerateUsers() {
+    return isAuthenticated() &&
+        ["moderator", "superuser"].includes(state.auth.role)
+}
+
 function normalizeAccessLevel(value) {
     const normalized = String(value ?? "").trim().toLowerCase()
     return ["admin", "editor", "reader"].includes(normalized)
@@ -3250,9 +3758,11 @@ function clearPrivateState({ preserveEditor = false } = {}) {
     songBookListLoadFailed = false
     closeSongBookEditor()
     clearSelectedSongBook({ preserveEditor })
+    clearUserManagement()
 }
 
 function renderPrivateState() {
+    renderUserManagement()
     renderSongBookList()
     renderSongBookState()
     renderSelectedSongBook()
@@ -3932,6 +4442,7 @@ export async function initialize() {
     closeEditor()
     const authQueryHandled = handleAuthQuery()
     renderAuth()
+    renderUserManagement()
     renderSongBookList()
     renderSongBookState()
     renderSelectedSongBook()

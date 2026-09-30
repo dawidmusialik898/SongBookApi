@@ -34,6 +34,16 @@ const requiredIds = [
     "song-book-access-email",
     "song-book-access-level",
     "save-song-book-access-button",
+    "song-books-panel",
+    "song-book-content",
+    "manage-users-button",
+    "moderation-panel",
+    "moderation-heading",
+    "moderation-list-state",
+    "moderation-list",
+    "close-moderation-button",
+    "refresh-managed-users-button",
+    "song-actions",
     "new-song-button",
     "refresh-songs-button",
     "app-status",
@@ -109,6 +119,14 @@ test("HTML shell contains each stable region exactly once", () => {
     )
     assert.match(
         getOpeningTag(indexHtml, "song-form"),
+        /\shidden(?:\s|>)/
+    )
+    assert.match(
+        getOpeningTag(indexHtml, "moderation-panel"),
+        /\shidden(?:\s|>)/
+    )
+    assert.match(
+        getOpeningTag(indexHtml, "manage-users-button"),
         /\shidden(?:\s|>)/
     )
     assert.match(
@@ -223,6 +241,15 @@ test("authentication forms are semantic and use safe autocomplete", () => {
 test("styles provide responsive, notice, selected, and button hooks", () => {
     assert.match(appCss, /grid-template-columns:\s*minmax\(0,\s*1fr\)/)
     assert.match(appCss, /@media \(min-width:\s*48rem\)/)
+    assert.match(
+        appCss,
+        /@media \(min-width:\s*48rem\)\s*\{\s*\.app-layout\s*\{\s*grid-template-columns:\s*minmax\(14rem,\s*17rem\)\s+minmax\(0,\s*1fr\)/s
+    )
+    assert.match(appCss, /\.song-book-content\s*\{[^}]*display:\s*grid/s)
+    assert.match(
+        appCss,
+        /\.song-book-list__button\s*\{[^}]*width:\s*100%/s
+    )
     assert.match(appCss, /width:\s*calc\(100% - 2rem\)/)
     assert.match(appCss, /max-width:\s*100%/)
     assert.match(appCss, /\.notice--error/)
@@ -230,6 +257,7 @@ test("styles provide responsive, notice, selected, and button hooks", () => {
     assert.match(appCss, /\.song-list__item--selected/)
     assert.match(appCss, /\.song-book-list__item--selected/)
     assert.match(appCss, /\.song-book-access-list/)
+    assert.match(appCss, /\.moderation-list__item/)
     assert.match(appCss, /\.song-list__actions/)
     assert.match(
         appCss,
@@ -246,6 +274,44 @@ test("styles provide responsive, notice, selected, and button hooks", () => {
     assert.match(buttonsCss, /\.button--destructive/)
     assert.match(buttonsCss, /min-width:\s*2\.75rem/)
     assert.doesNotMatch(buttonsCss, /688px/)
+})
+
+test("song books are in a sidebar beside the selected book and its songs", () => {
+    const sidebar = indexHtml.indexOf('<aside\n')
+    const endSidebar = indexHtml.indexOf("</aside>", sidebar)
+    const content = indexHtml.indexOf('class="song-book-content"')
+    const selectedBook = indexHtml.indexOf('id="selected-song-book-panel"')
+    const songList = indexHtml.indexOf('id="song-list"')
+    const songWorkspace = indexHtml.indexOf('id="song-workspace-heading"')
+
+    assert.ok(sidebar < indexHtml.indexOf('id="song-book-list"'))
+    assert.ok(indexHtml.indexOf('id="song-book-list"') < endSidebar)
+    assert.ok(endSidebar < content)
+    assert.ok(content < selectedBook)
+    assert.ok(selectedBook < songList)
+    assert.ok(songList < songWorkspace)
+    assert.match(
+        getOpeningTag(indexHtml, "selected-song-book-heading"),
+        /^<h2\b/
+    )
+    assert.match(
+        getOpeningTag(indexHtml, "song-book-access-heading"),
+        /^<h3\b/
+    )
+})
+
+test("moderation has a separate labelled view and stays hidden initially", () => {
+    const userManagement = indexHtml.indexOf('id="moderation-panel"')
+    const sidebar = indexHtml.indexOf('id="song-books-panel"')
+    assert.ok(userManagement < sidebar)
+    assert.match(
+        getOpeningTag(indexHtml, "moderation-heading"),
+        /^<h2\b[^>]*tabindex="-1"/
+    )
+    assert.match(
+        getOpeningTag(indexHtml, "moderation-list"),
+        /\saria-labelledby="moderation-heading"/
+    )
 })
 
 function countMatches(value, pattern) {

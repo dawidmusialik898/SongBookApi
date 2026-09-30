@@ -31,6 +31,14 @@
                             Register
                         </button>
                         <button
+                            id="manage-users-button"
+                            class="button button--neutral"
+                            type="button"
+                            hidden
+                        >
+                            Manage users
+                        </button>
+                        <button
                             id="logout-button"
                             class="button button--neutral"
                             type="button"
@@ -40,7 +48,11 @@
                         </button>
                     </div>
                 </div>
-                <div class="toolbar" aria-label="Song actions">
+                <div
+                    id="song-actions"
+                    class="toolbar"
+                    aria-label="Song actions"
+                >
                     <button
                         id="new-song-button"
                         class="button button--primary"
@@ -261,6 +273,46 @@
 
         <main class="app-layout">
             <section
+                id="moderation-panel"
+                class="panel moderation-panel"
+                aria-labelledby="moderation-heading"
+                hidden
+            >
+                <div class="section-heading">
+                    <h2 id="moderation-heading" tabindex="-1">
+                        User management
+                    </h2>
+                    <div class="toolbar" aria-label="User-management actions">
+                        <button
+                            id="close-moderation-button"
+                            class="button button--neutral"
+                            type="button"
+                        >
+                            Back to song books
+                        </button>
+                        <button
+                            id="refresh-managed-users-button"
+                            class="button button--neutral"
+                            type="button"
+                        >
+                            Refresh users
+                        </button>
+                    </div>
+                </div>
+                <p
+                    id="moderation-list-state"
+                    role="status"
+                    aria-live="polite"
+                ></p>
+                <ul
+                    id="moderation-list"
+                    class="moderation-list"
+                    aria-labelledby="moderation-heading"
+                ></ul>
+            </section>
+
+            <aside
+                id="song-books-panel"
                 class="panel song-books-panel"
                 aria-labelledby="song-book-list-heading"
             >
@@ -331,20 +383,22 @@
                         </button>
                     </div>
                 </form>
+            </aside>
 
+            <div id="song-book-content" class="song-book-content">
                 <section
                     id="selected-song-book-panel"
-                    class="selected-song-book"
+                    class="panel selected-song-book"
                     aria-labelledby="selected-song-book-heading"
                     hidden
                 >
                     <div class="section-heading">
-                        <h3
+                        <h2
                             id="selected-song-book-heading"
                             tabindex="-1"
                         >
                             Selected song book
-                        </h3>
+                        </h2>
                         <div
                             class="toolbar"
                             aria-label="Selected song-book actions"
@@ -374,9 +428,9 @@
                         aria-labelledby="song-book-access-heading"
                         hidden
                     >
-                        <h4 id="song-book-access-heading">
+                        <h3 id="song-book-access-heading">
                             Collaborators
-                        </h4>
+                        </h3>
                         <p id="song-book-access-state"></p>
                         <ul
                             id="song-book-access-list"
@@ -421,138 +475,138 @@
                         </form>
                     </section>
                 </section>
-            </section>
 
-            <section
-                class="panel"
-                aria-labelledby="song-list-heading"
-            >
-                <h2 id="song-list-heading" tabindex="-1">Songs</h2>
-                <p id="song-list-state">Select a song book.</p>
-                <ul
-                    id="song-list"
-                    class="song-list"
+                <section
+                    class="panel"
                     aria-labelledby="song-list-heading"
-                ></ul>
-            </section>
-
-            <section
-                class="panel editor"
-                aria-labelledby="song-workspace-heading"
-            >
-                <h2 id="song-workspace-heading">Song workspace</h2>
-                <p id="write-access-message" hidden>
-                    Select a song book with Editor access to create or edit
-                    songs.
-                </p>
-
-                <div id="song-details">
-                    <p>Select a song to view its details.</p>
-                </div>
-
-                <form
-                    id="song-form"
-                    aria-labelledby="song-form-heading"
-                    hidden
                 >
-                    <h3 id="song-form-heading">Song editor</h3>
+                    <h2 id="song-list-heading" tabindex="-1">Songs</h2>
+                    <p id="song-list-state">Select a song book.</p>
+                    <ul
+                        id="song-list"
+                        class="song-list"
+                        aria-labelledby="song-list-heading"
+                    ></ul>
+                </section>
 
-                    <div class="form-grid">
-                        <div class="form-field">
-                            <label for="song-title">Title</label>
-                            <input
-                                id="song-title"
-                                name="title"
-                                type="text"
-                            >
-                        </div>
+                <section
+                    class="panel editor"
+                    aria-labelledby="song-workspace-heading"
+                >
+                    <h2 id="song-workspace-heading">Song workspace</h2>
+                    <p id="write-access-message" hidden>
+                        Select a song book with Editor access to create or edit
+                        songs.
+                    </p>
 
-                        <div class="form-field">
-                            <label for="song-author">Author</label>
-                            <input
-                                id="song-author"
-                                name="author"
-                                type="text"
-                            >
-                        </div>
-
-                        <div class="form-field">
-                            <label for="song-original-title">
-                                Original title
-                            </label>
-                            <input
-                                id="song-original-title"
-                                name="originalTitle"
-                                type="text"
-                            >
-                        </div>
-
-                        <div class="form-field">
-                            <label for="song-number">Number</label>
-                            <input
-                                id="song-number"
-                                name="number"
-                                type="text"
-                            >
-                        </div>
-
-                        <div class="form-field">
-                            <label for="song-key">Key</label>
-                            <input
-                                id="song-key"
-                                name="key"
-                                type="text"
-                            >
-                        </div>
-
-                        <div class="form-field">
-                            <label for="song-tempo">Tempo</label>
-                            <input
-                                id="song-tempo"
-                                name="tempo"
-                                type="text"
-                            >
-                        </div>
+                    <div id="song-details">
+                        <p>Select a song to view its details.</p>
                     </div>
 
-                    <section
-                        class="parts-section"
-                        aria-labelledby="parts-heading"
+                    <form
+                        id="song-form"
+                        aria-labelledby="song-form-heading"
+                        hidden
                     >
-                        <h4 id="parts-heading">Parts</h4>
-                        <div id="parts-editor"></div>
-                        <button
-                            id="add-part-button"
-                            class="button button--neutral"
-                            type="button"
-                        >
-                            Add part
-                        </button>
-                    </section>
+                        <h3 id="song-form-heading">Song editor</h3>
 
-                    <p
-                        id="song-form-status"
-                        class="form-status"
-                    ></p>
+                        <div class="form-grid">
+                            <div class="form-field">
+                                <label for="song-title">Title</label>
+                                <input
+                                    id="song-title"
+                                    name="title"
+                                    type="text"
+                                >
+                            </div>
 
-                    <div class="form-actions">
-                        <button
-                            id="cancel-song-button"
-                            class="button button--neutral"
-                            type="button"
+                            <div class="form-field">
+                                <label for="song-author">Author</label>
+                                <input
+                                    id="song-author"
+                                    name="author"
+                                    type="text"
+                                >
+                            </div>
+
+                            <div class="form-field">
+                                <label for="song-original-title">
+                                    Original title
+                                </label>
+                                <input
+                                    id="song-original-title"
+                                    name="originalTitle"
+                                    type="text"
+                                >
+                            </div>
+
+                            <div class="form-field">
+                                <label for="song-number">Number</label>
+                                <input
+                                    id="song-number"
+                                    name="number"
+                                    type="text"
+                                >
+                            </div>
+
+                            <div class="form-field">
+                                <label for="song-key">Key</label>
+                                <input
+                                    id="song-key"
+                                    name="key"
+                                    type="text"
+                                >
+                            </div>
+
+                            <div class="form-field">
+                                <label for="song-tempo">Tempo</label>
+                                <input
+                                    id="song-tempo"
+                                    name="tempo"
+                                    type="text"
+                                >
+                            </div>
+                        </div>
+
+                        <section
+                            class="parts-section"
+                            aria-labelledby="parts-heading"
                         >
-                            Cancel
-                        </button>
-                        <button
-                            id="save-song-button"
-                            class="button button--primary"
-                            type="submit"
-                        >
-                            Save song
-                        </button>
-                    </div>
-                </form>
-            </section>
+                            <h4 id="parts-heading">Parts</h4>
+                            <div id="parts-editor"></div>
+                            <button
+                                id="add-part-button"
+                                class="button button--neutral"
+                                type="button"
+                            >
+                                Add part
+                            </button>
+                        </section>
+
+                        <p
+                            id="song-form-status"
+                            class="form-status"
+                        ></p>
+
+                        <div class="form-actions">
+                            <button
+                                id="cancel-song-button"
+                                class="button button--neutral"
+                                type="button"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                id="save-song-button"
+                                class="button button--primary"
+                                type="submit"
+                            >
+                                Save song
+                            </button>
+                        </div>
+                    </form>
+                </section>
+            </div>
         </main>
 
         <script type="module" src="src/main.js"></script>

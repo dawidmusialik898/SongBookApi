@@ -257,6 +257,7 @@ export function installTestBrowser(
     {
         authHandler = null,
         initialUrl = "https://localhost/",
+        moderationHandler = null,
         songBookHandler = null
     } = {}
 ) {
@@ -264,12 +265,20 @@ export function installTestBrowser(
     const confirmations = []
     const confirmationResults = []
     const shellElements = [
-        ["button", "new-song-button", "New song"],
-        ["button", "refresh-songs-button", "Refresh songs"],
+        ["div", "song-actions", ""],
+        ["button", "new-song-button", "New song", false, "song-actions"],
+        [
+            "button",
+            "refresh-songs-button",
+            "Refresh songs",
+            false,
+            "song-actions"
+        ],
         ["p", "app-status", ""],
         ["p", "auth-summary", "Checking session..."],
         ["button", "show-login-button", "Sign in", true],
         ["button", "show-register-button", "Register", true],
+        ["button", "manage-users-button", "Manage users", true],
         ["button", "logout-button", "Sign out", true],
         ["section", "auth-panel", "", true],
         [
@@ -412,21 +421,69 @@ export function installTestBrowser(
             "reset-password-form",
             "confirmPassword"
         ],
-        ["button", "new-song-book-button", "New song book", true],
+        ["main", "app-layout", ""],
+        ["section", "moderation-panel", "", true, "app-layout"],
+        [
+            "h2",
+            "moderation-heading",
+            "User management",
+            false,
+            "moderation-panel"
+        ],
+        [
+            "button",
+            "close-moderation-button",
+            "Back to song books",
+            false,
+            "moderation-panel"
+        ],
+        [
+            "button",
+            "refresh-managed-users-button",
+            "Refresh users",
+            false,
+            "moderation-panel"
+        ],
+        [
+            "p",
+            "moderation-list-state",
+            "",
+            false,
+            "moderation-panel"
+        ],
+        ["ul", "moderation-list", "", false, "moderation-panel"],
+        ["aside", "song-books-panel", "", false, "app-layout"],
+        ["div", "song-book-content", "", false, "app-layout"],
+        [
+            "button",
+            "new-song-book-button",
+            "New song book",
+            true,
+            "song-books-panel"
+        ],
         [
             "button",
             "refresh-song-books-button",
             "Refresh song books",
-            true
+            true,
+            "song-books-panel"
         ],
-        ["h2", "song-book-list-heading", "Song books"],
+        [
+            "h2",
+            "song-book-list-heading",
+            "Song books",
+            false,
+            "song-books-panel"
+        ],
         [
             "p",
             "song-book-list-state",
-            "Sign in to load song books."
+            "Sign in to load song books.",
+            false,
+            "song-books-panel"
         ],
-        ["ul", "song-book-list", ""],
-        ["form", "song-book-form", "", true],
+        ["ul", "song-book-list", "", false, "song-books-panel"],
+        ["form", "song-book-form", "", true, "song-books-panel"],
         [
             "h3",
             "song-book-form-heading",
@@ -456,9 +513,15 @@ export function installTestBrowser(
             false,
             "song-book-form"
         ],
-        ["section", "selected-song-book-panel", "", true],
         [
-            "h3",
+            "section",
+            "selected-song-book-panel",
+            "",
+            true,
+            "song-book-content"
+        ],
+        [
+            "h2",
             "selected-song-book-heading",
             "Selected song book",
             false,
@@ -529,12 +592,24 @@ export function installTestBrowser(
             false,
             "song-book-access-form"
         ],
-        ["p", "write-access-message", "", true],
-        ["h2", "song-list-heading", "Songs"],
-        ["p", "song-list-state", "Loading songs..."],
-        ["ul", "song-list", ""],
-        ["div", "song-details", ""],
-        ["form", "song-form", "", true],
+        [
+            "p",
+            "write-access-message",
+            "",
+            true,
+            "song-book-content"
+        ],
+        ["h2", "song-list-heading", "Songs", false, "song-book-content"],
+        [
+            "p",
+            "song-list-state",
+            "Loading songs...",
+            false,
+            "song-book-content"
+        ],
+        ["ul", "song-list", "", false, "song-book-content"],
+        ["div", "song-details", "", false, "song-book-content"],
+        ["form", "song-form", "", true, "song-book-content"],
         ["h3", "song-form-heading", "Song editor", false, "song-form"],
         [
             "input",
@@ -620,6 +695,7 @@ export function installTestBrowser(
     const requests = []
     const songBookRequests = []
     const authRequests = []
+    const moderationRequests = []
     const location = new URL(initialUrl)
 
     globalThis.document = document
@@ -674,6 +750,18 @@ export function installTestBrowser(
 
             authRequests.push(request)
             return createFetchResponse(await authHandler(request))
+        }
+
+        if (request.url.startsWith("/admin/users")) {
+            moderationRequests.push(request)
+            return createFetchResponse(
+                moderationHandler === null
+                    ? {
+                        body: { title: "Unexpected moderation request" },
+                        status: 500
+                    }
+                    : await moderationHandler(request)
+            )
         }
 
         if (request.url.startsWith("/songbooks")) {
@@ -753,6 +841,7 @@ export function installTestBrowser(
         requests,
         songBookRequests,
         authRequests,
+        moderationRequests,
         location,
         songList,
         queueConfirmResult(result) {

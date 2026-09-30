@@ -531,6 +531,19 @@ next book.
 
 ## Phase 8 - Add song-book UI
 
+At wider widths, accessible song books and the create/rename form occupy a
+left sidebar. The selected book's details, its songs, and the song workspace
+share the main column. On narrow screens, the sidebar stacks above the
+content; choosing a book keeps the existing selection and focus behavior.
+
+The later user-management addition gives SuperUsers and Moderators a separate
+**Manage users** view. It does not grant access to private song books: the
+server enforces account roles separately from song-book permissions. The
+SuperUser can assign/revoke Moderator access and ban/unban/delete users;
+Moderators can ban/unban/delete ordinary users only. Register and confirm the
+operator-configured bootstrap email before that account becomes the first
+SuperUser. See the API README for provisioning and endpoint details.
+
 ### Required HTML IDs
 
 | ID | Purpose |

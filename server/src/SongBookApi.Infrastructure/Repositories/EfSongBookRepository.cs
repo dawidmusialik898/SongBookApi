@@ -71,10 +71,16 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         string normalizedName,
         DateTimeOffset updatedAtUtc)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
         songBook.Name = name;
         songBook.NormalizedName = normalizedName;
         songBook.UpdatedAtUtc = updatedAtUtc;
         await dbContext.SaveChangesAsync();
+        await dbContext.SongBooks
+            .Where(book => book.Id == songBook.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(
+                book => book.ContentRevision, book => book.ContentRevision + 1));
+        await transaction.CommitAsync();
     }
 
     public async Task DeleteAsync(SongBook songBook)

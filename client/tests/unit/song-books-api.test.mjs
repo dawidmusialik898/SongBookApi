@@ -7,9 +7,12 @@ import { resetAntiforgeryToken } from "../../src/httpClient.js"
 test("songBooksApi exports the complete nested resource contract", () => {
     assert.deepEqual(Object.keys(songBooksApi).sort(), [
         "createSongBook",
+        "createSongBookPdf",
         "deleteSongBook",
+        "downloadSongBookPdf",
         "getSongBook",
         "getSongBookAccess",
+        "getSongBookPdfs",
         "getSongBooks",
         "removeSongBookAccess",
         "renameSongBook",
@@ -108,6 +111,150 @@ test("songBooksApi rejects blank resource IDs before fetch", () => {
         )
         assert.throws(
             () => songBooksApi.removeSongBookAccess("book", ""),
+            TypeError
+        )
+        assert.throws(
+            () => songBooksApi.getSongBookPdfs(" "),
+            TypeError
+        )
+        assert.throws(
+            () => songBooksApi.downloadSongBookPdf("book", ""),
+            TypeError
+        )
+    } finally {
+        globalThis.fetch = originalFetch
+    }
+
+    assert.equal(calls, 0)
+})
+
+test("PDF API pages, generation bodies, and downloads use the nested book URL", async () => {
+    const calls = []
+    const metadata = {
+        id: "pdf / one",
+        includeChords: true,
+        isWholeBook: true,
+        songCount: 2,
+        selectedSongs: [],
+        generatedAtUtc: "2026-09-30T20:00:00Z",
+        isOutdated: false
+    }
+    const responses = [
+        jsonResponse({ items: [metadata], page: 1, hasNext: true }),
+        jsonResponse({ items: [], page: 2, hasNext: false }),
+        jsonResponse({ token: "pdf-csrf" }),
+        jsonResponse(metadata, 201),
+        jsonResponse({
+            ...metadata,
+            includeChords: false,
+            isWholeBook: false,
+            selectedSongs: [
+                { id: "song / one", title: "First" },
+                { id: "song-two", title: "Second" }
+            ]
+        }, 201),
+        new Response("%PDF-1.7", {
+            headers: { "Content-Type": "application/pdf" }
+        })
+    ]
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (url, options = {}) => {
+        calls.push({
+            body: options.body,
+            credentials: options.credentials,
+            headers: Object.fromEntries(
+                new Headers(options.headers ?? {}).entries()
+            ),
+            method: options.method ?? "GET",
+            responseType: options.responseType,
+            url: String(url)
+        })
+        return responses.shift()
+    }
+
+    try {
+        resetAntiforgeryToken()
+        assert.deepEqual(
+            await songBooksApi.getSongBookPdfs("book / one"),
+            { items: [metadata], page: 1, hasNext: true }
+        )
+        await songBooksApi.getSongBookPdfs("book / one", 2)
+        assert.deepEqual(
+            await songBooksApi.createSongBookPdf("book / one", {
+                includeChords: true
+            }),
+            metadata
+        )
+        await songBooksApi.createSongBookPdf("book / one", {
+            includeChords: false,
+            songIds: ["song / one", "song-two"]
+        })
+        const downloaded = await songBooksApi.downloadSongBookPdf(
+            "book / one",
+            "pdf / one"
+        )
+        assert.equal(await downloaded.text(), "%PDF-1.7")
+        assert.equal(downloaded.type, "application/pdf")
+    } finally {
+        globalThis.fetch = originalFetch
+    }
+
+    assert.deepEqual(calls.map(call => [call.method, call.url]), [
+        ["GET", "/songbooks/book%20%2F%20one/pdfs"],
+        ["GET", "/songbooks/book%20%2F%20one/pdfs?page=2"],
+        ["GET", "/auth/antiforgery"],
+        ["POST", "/songbooks/book%20%2F%20one/pdfs"],
+        ["POST", "/songbooks/book%20%2F%20one/pdfs"],
+        [
+            "GET",
+            "/songbooks/book%20%2F%20one/pdfs/pdf%20%2F%20one/download"
+        ]
+    ])
+    assert.deepEqual(
+        JSON.parse(calls[3].body),
+        { includeChords: true }
+    )
+    assert.deepEqual(
+        JSON.parse(calls[4].body),
+        {
+            includeChords: false,
+            songIds: ["song / one", "song-two"]
+        }
+    )
+    assert.equal(calls[3].headers["x-csrf-token"], "pdf-csrf")
+    assert.equal(calls[5].credentials, "same-origin")
+    assert.equal(calls[5].responseType, undefined)
+})
+
+test("PDF generation rejects empty, duplicate, and invalid selections before fetch", () => {
+    const originalFetch = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = async () => {
+        calls += 1
+        return emptyResponse(204)
+    }
+
+    try {
+        for (const payload of [
+            {},
+            { includeChords: "true" },
+            { includeChords: true, songIds: [] },
+            { includeChords: false, songIds: ["song", "song"] },
+            { includeChords: false, songIds: [" "] }
+        ]) {
+            assert.throws(
+                () => songBooksApi.createSongBookPdf("book", payload),
+                TypeError
+            )
+        }
+        assert.throws(
+            () => songBooksApi.createSongBookPdf("", {
+                includeChords: true
+            }),
+            TypeError
+        )
+        assert.throws(
+            () => songBooksApi.getSongBookPdfs("book", 0),
             TypeError
         )
     } finally {

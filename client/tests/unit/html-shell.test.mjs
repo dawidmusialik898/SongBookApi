@@ -32,6 +32,20 @@ const requiredIds = [
     "selected-song-book-heading",
     "rename-song-book-button",
     "delete-song-book-button",
+    "song-book-pdfs-panel",
+    "song-book-pdfs-heading",
+    "refresh-song-book-pdfs-button",
+    "song-book-pdfs-state",
+    "song-book-pdfs-list",
+    "pdf-pagination",
+    "previous-pdf-page-button",
+    "pdf-page-status",
+    "next-pdf-page-button",
+    "song-book-pdf-form",
+    "song-book-pdf-scope",
+    "song-book-pdf-selection-state",
+    "song-book-pdf-include-chords",
+    "generate-song-book-pdf-button",
     "song-book-access-panel",
     "song-book-access-list",
     "member-pagination",
@@ -152,6 +166,11 @@ test("HTML shell contains each stable region exactly once", () => {
             "next-song-book-page-button"
         ],
         [
+            "pdf-pagination",
+            "previous-pdf-page-button",
+            "next-pdf-page-button"
+        ],
+        [
             "member-pagination",
             "previous-member-page-button",
             "next-member-page-button"
@@ -218,6 +237,22 @@ test("future form controls have labels and safe button types", () => {
     )
     assert.match(
         getOpeningTag(indexHtml, "save-song-book-button"),
+        /\stype="submit"/
+    )
+    assert.match(
+        indexHtml,
+        /<label\s+for="song-book-pdf-scope"/
+    )
+    assert.match(
+        indexHtml,
+        /<label\s+for="song-book-pdf-include-chords"/
+    )
+    assert.match(
+        getOpeningTag(indexHtml, "song-book-pdf-form"),
+        /\shidden(?:\s|>)/
+    )
+    assert.match(
+        getOpeningTag(indexHtml, "generate-song-book-pdf-button"),
         /\stype="submit"/
     )
     assert.match(
@@ -301,6 +336,7 @@ test("styles provide responsive, notice, selected, and button hooks", () => {
     assert.match(appCss, /\.song-list__item--selected/)
     assert.match(appCss, /\.song-book-list__item--selected/)
     assert.match(appCss, /\.song-book-access-list/)
+    assert.match(appCss, /\.pdf-list__status--outdated/)
     assert.match(appCss, /\.moderation-list__item/)
     assert.match(appCss, /\.song-list__actions/)
     assert.match(

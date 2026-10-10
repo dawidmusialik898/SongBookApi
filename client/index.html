@@ -467,6 +467,100 @@
                     </div>
 
                     <section
+                        id="song-book-pdfs-panel"
+                        class="song-book-pdfs"
+                        aria-labelledby="song-book-pdfs-heading"
+                        hidden
+                    >
+                        <div class="section-heading">
+                            <h3 id="song-book-pdfs-heading">PDF exports</h3>
+                            <button
+                                id="refresh-song-book-pdfs-button"
+                                class="button button--neutral"
+                                type="button"
+                            >
+                                Refresh PDFs
+                            </button>
+                        </div>
+                        <p id="song-book-pdfs-state" role="status"></p>
+                        <ul
+                            id="song-book-pdfs-list"
+                            class="pdf-list"
+                            aria-labelledby="song-book-pdfs-heading"
+                        ></ul>
+                        <nav
+                            id="pdf-pagination"
+                            class="pagination"
+                            aria-label="PDF export pages"
+                            hidden
+                        >
+                            <button
+                                id="previous-pdf-page-button"
+                                class="button button--neutral"
+                                type="button"
+                            >
+                                Previous PDFs
+                            </button>
+                            <span id="pdf-page-status" role="status">
+                                Page 1
+                            </span>
+                            <button
+                                id="next-pdf-page-button"
+                                class="button button--neutral"
+                                type="button"
+                            >
+                                Next PDFs
+                            </button>
+                        </nav>
+                        <form
+                            id="song-book-pdf-form"
+                            class="song-book-pdf-form"
+                            hidden
+                        >
+                            <h4>Generate PDF</h4>
+                            <div class="form-field">
+                                <label for="song-book-pdf-scope">
+                                    Songs to include
+                                </label>
+                                <select
+                                    id="song-book-pdf-scope"
+                                    name="scope"
+                                >
+                                    <option value="whole">
+                                        Entire song book
+                                    </option>
+                                    <option value="selected">
+                                        Selected songs
+                                    </option>
+                                </select>
+                            </div>
+                            <p
+                                id="song-book-pdf-selection-state"
+                                role="status"
+                                hidden
+                            ></p>
+                            <div class="checkbox-field">
+                                <input
+                                    id="song-book-pdf-include-chords"
+                                    name="includeChords"
+                                    type="checkbox"
+                                    checked
+                                >
+                                <label for="song-book-pdf-include-chords">
+                                    Include chords
+                                </label>
+                            </div>
+                            <button
+                                id="generate-song-book-pdf-button"
+                                class="button button--primary"
+                                type="submit"
+                            >
+                                Generate PDF
+                            </button>
+                        </form>
+                    </section>
+
+                    <section
                         id="song-book-access-panel"
                         class="song-book-access"
                         aria-labelledby="song-book-access-heading"

@@ -14,6 +14,8 @@ public static class ServicesExtensions
         _ = services.AddScoped<ISongRepository, EfSongRepository>();
         _ = services.AddScoped<ISongBookRepository, EfSongBookRepository>();
         _ = services.AddScoped<ISongBookService, SongBookService>();
+        _ = services.AddScoped<ISongBookPdfRepository, EfSongBookPdfRepository>();
+        _ = services.AddScoped<ISongBookPdfService, SongBookPdfService>();
         _ = services.AddScoped<ISongBookAccessService, SongBookAccessService>();
         return services;
     }

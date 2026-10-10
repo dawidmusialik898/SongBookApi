@@ -28,8 +28,8 @@ URL.
 
 ## Direct NuGet dependencies
 
-These are all 14 declared `PackageReference` entries in the four
-`server/**/*.csproj` files: 13 distinct package IDs because the test project
+These are all 16 declared `PackageReference` entries in the four
+`server/**/*.csproj` files: 15 distinct package IDs because the test project
 also references `Microsoft.EntityFrameworkCore.Sqlite`. Projects target
 `net10.0`; the ASP.NET Core/.NET shared frameworks are platform requirements,
 not individually declared NuGet packages.
@@ -44,16 +44,18 @@ not individually declared NuGet packages.
 | Service | `Microsoft.AspNetCore.OpenApi` 10.0.10 | Registers and maps a **Development-only** OpenAPI endpoint. Optional if nobody consumes the schema. |
 | Service | `Microsoft.EntityFrameworkCore.Design` 10.0.10 | Design-time migration support, with `PrivateAssets=all`. Keep while using EF migrations; not an application feature. |
 | Service | `Microsoft.OpenApi` 2.7.5 | Pins the OpenAPI dependency above `Microsoft.AspNetCore.OpenApi`'s 2.0.0 minimum. Remove with OpenAPI support, or confirm a safe transitive resolution before dropping just this pin. |
+| Service | `QuestPDF` 2026.9.1 | Generates server-side song-book PDFs, including chorded lyrics; the Community license is free for eligible individual/open-source projects, but commercial deployment must check license eligibility. Keep until PDF generation is replaced. |
 | Tests | `coverlet.collector` 10.0.1 | Optional coverage collection; candidate for removal if coverage is not used. |
 | Tests | `Microsoft.AspNetCore.Mvc.Testing` 10.0.10 | `WebApplicationFactory` API integration tests. Keep. |
 | Tests | `Microsoft.NET.Test.Sdk` 18.8.1 | `dotnet test` host/discovery. Keep with the current test runner. |
+| Tests | `PdfPig` 0.1.16 | Extracts generated PDF text in tests to verify song selection and chord inclusion/exclusion; no runtime dependency. |
 | Tests | `xunit` 2.9.3 | Assertion/test framework. Keep unless rewriting tests. |
 | Tests | `xunit.runner.visualstudio` 3.1.5 | xUnit discovery and execution through the current test tooling. Keep. |
 
 ### Resolved transitive NuGet packages
 
 The local `dotnet list server/SongBookApi.slnx package --include-transitive
---no-restore --format json` result has **87 distinct package IDs**: the 13
+--no-restore --format json` result has **89 distinct package IDs**: the 15
 direct IDs above and the following **74 transitive IDs**. `Main/build` means
 present in at least one non-test project's restore graph; it does **not** mean
 every entry is shipped in the production publish (EF design tooling, for
@@ -162,7 +164,7 @@ individual .NET shared-framework assemblies are outside this NuGet list.
 
 | Dependency / status | Used for | Replace or remove? |
 | --- | --- | --- |
-| Ubuntu/Debian host, .NET 10 ASP.NET Core runtime, systemd (approved deployment) | One API/client process; systemd units, timers, journal, and credentials. The .NET **SDK** is needed to build on the development machine, not on the host. | A managed host could replace the OS/process/secret integration, but requires new deployment, persistence, and proxy configuration. Cannot remove the server runtime without a rewrite. |
+| Ubuntu/Debian host, .NET 10 ASP.NET Core runtime, systemd (approved deployment) | One API/client process; systemd units, timers, journal, and credentials. `fonts-dejavu-core` supplies a monospaced font for chorded PDFs. The .NET **SDK** is needed to build on the development machine, not on the host. | A managed host could replace the OS/process/secret integration, but requires new deployment, persistence, and proxy configuration. Cannot remove the server runtime without a rewrite. |
 | Local SQLite file and protected ASP.NET Core Data Protection key directory | Durable users/books/songs, sessions and token keys. Both must survive releases and be restored together. | Not remote services. PostgreSQL/managed storage would add an external service and require provider-specific migrations, connection, backups, and single/multi-instance review; not a simplification here. |
 | Gmail authenticated TLS SMTP (approved; real delivery pending) | Confirmation and password-reset messages via `SmtpAccountEmailSender`. Development logs links instead. | Can switch to another SMTP provider with configuration; using an HTTPS mail API could replace `MailKit`/MIME libraries with `HttpClient` plus new sender, error handling, and tests, but introduces provider/API coupling. Do not drop email while confirmed sign-in and recovery are required. |
 | DuckDNS and its updater (approved; public setup pending) | Dynamic public DNS, updated by a systemd timer and `curl`. | Replace with another domain/DNS provider and update mechanism or a stable IP with an ordinary DNS record; the public hostname in certificates and account links remains necessary. |

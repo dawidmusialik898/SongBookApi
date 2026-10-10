@@ -26,6 +26,10 @@ function getSongBookAccessUrl(songBookId) {
     return `${getSongBookUrl(songBookId)}/access`
 }
 
+function getSongBookPdfsUrl(songBookId) {
+    return `${getSongBookUrl(songBookId)}/pdfs`
+}
+
 export function getSongBooks(page = 1) {
     return request(pageUrl(SONG_BOOKS_API_URL, page))
 }
@@ -72,5 +76,49 @@ export function removeSongBookAccess(songBookId, accessId) {
             "Access entry id"
         )}`,
         { method: "DELETE" }
+    )
+}
+
+export function getSongBookPdfs(songBookId, page = 1) {
+    return request(pageUrl(getSongBookPdfsUrl(songBookId), page))
+}
+
+export function createSongBookPdf(
+    songBookId,
+    { includeChords, songIds } = {}
+) {
+    const url = getSongBookPdfsUrl(songBookId)
+    if (
+        typeof includeChords !== "boolean" ||
+        (
+            songIds !== undefined &&
+            (
+                !Array.isArray(songIds) ||
+                songIds.length === 0 ||
+                songIds.some(id =>
+                    typeof id !== "string" || id.trim() === ""
+                ) ||
+                new Set(songIds).size !== songIds.length
+            )
+        )
+    ) {
+        throw new TypeError("Invalid PDF generation options.")
+    }
+
+    return request(url, {
+        method: "POST",
+        json: songIds === undefined
+            ? { includeChords }
+            : { includeChords, songIds }
+    })
+}
+
+export function downloadSongBookPdf(songBookId, pdfId) {
+    return request(
+        `${getSongBookPdfsUrl(songBookId)}/${requireId(
+            pdfId,
+            "PDF id"
+        )}/download`,
+        { responseType: "blob" }
     )
 }

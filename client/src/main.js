@@ -7,9 +7,12 @@ import {
 } from "./songsApi.js"
 import {
     createSongBook,
+    createSongBookPdf,
     deleteSongBook,
+    downloadSongBookPdf,
     getSongBook,
     getSongBookAccess,
+    getSongBookPdfs,
     getSongBooks,
     removeSongBookAccess,
     renameSongBook,
@@ -68,6 +71,14 @@ export const state = {
     isSavingSongBook: false,
     isLoadingSongBookMembers: false,
     isSavingSongBookAccess: false,
+    songBookPdfs: [],
+    pdfPage: 1,
+    pdfHasNext: false,
+    pdfScope: "whole",
+    pdfSelectedSongs: new Map(),
+    isLoadingPdfs: false,
+    isGeneratingPdf: false,
+    downloadingPdfId: null,
     songs: [],
     songPage: 1,
     songHasNext: false,
@@ -100,6 +111,7 @@ const NOTICE_TYPES = new Set(["info", "success", "error"])
 let collectionLoadFailed = false
 let songBookListLoadFailed = false
 let songBookMembersLoadFailed = false
+let pdfListLoadFailed = false
 let authLoadFailed = false
 let resetPasswordCredentials = null
 let authPanelTrigger = null
@@ -112,6 +124,9 @@ let songDetailRequestId = 0
 let songDetailController = null
 let songBookMembersRequestId = 0
 let songBookAccessMutationId = 0
+let pdfListRequestId = 0
+let pdfMutationId = 0
+let pdfDownloadRequestId = 0
 let songBookMutationId = 0
 let songMutationId = 0
 let managedUserListRequestId = 0
@@ -123,10 +138,12 @@ let renderedBookBusy = null
 let bookRows = new Map()
 let renderedSongs = null
 let renderedSongWriteAccess = null
+let renderedSongPdfMode = null
 let renderedSongSelection = null
 let renderedSongSaving = null
 let renderedSongDeletion = null
 let songRows = new Map()
+let renderedPdfs = null
 let renderedUsers = null
 let renderedUserRole = null
 let renderedUserPanel = null
@@ -194,6 +211,34 @@ const elements = {
     ),
     deleteSongBookButton: document.getElementById(
         "delete-song-book-button"
+    ),
+    songBookPdfsPanel: document.getElementById(
+        "song-book-pdfs-panel"
+    ),
+    refreshSongBookPdfsButton: document.getElementById(
+        "refresh-song-book-pdfs-button"
+    ),
+    songBookPdfsState: document.getElementById(
+        "song-book-pdfs-state"
+    ),
+    songBookPdfsList: document.getElementById(
+        "song-book-pdfs-list"
+    ),
+    pdfPagination: {
+        container: document.getElementById("pdf-pagination"),
+        previous: document.getElementById("previous-pdf-page-button"),
+        next: document.getElementById("next-pdf-page-button"),
+        status: document.getElementById("pdf-page-status")
+    },
+    songBookPdfForm: document.getElementById("song-book-pdf-form"),
+    songBookPdfScope: document.getElementById(
+        "song-book-pdf-scope"
+    ),
+    songBookPdfSelectionState: document.getElementById(
+        "song-book-pdf-selection-state"
+    ),
+    songBookPdfIncludeChords: document.getElementById(
+        "song-book-pdf-include-chords"
     ),
     songBookAccessPanel: document.getElementById(
         "song-book-access-panel"
@@ -352,6 +397,47 @@ elements.deleteSongBookButton.addEventListener(
     "click",
     requestSongBookDeletion
 )
+elements.refreshSongBookPdfsButton.addEventListener(
+    "click",
+    () => loadSongBookPdfs({
+        showErrorNotice: true,
+        showSuccessNotice: true
+    })
+)
+elements.pdfPagination.previous.addEventListener(
+    "click",
+    () => loadSongBookPdfs({
+        page: state.pdfPage - 1,
+        showErrorNotice: true
+    })
+)
+elements.pdfPagination.next.addEventListener(
+    "click",
+    () => loadSongBookPdfs({
+        page: state.pdfPage + 1,
+        showErrorNotice: true
+    })
+)
+elements.songBookPdfForm.addEventListener(
+    "submit",
+    generateSongBookPdf
+)
+elements.songBookPdfScope.addEventListener("change", event => {
+    if (!isSongBookAdmin()) {
+        return
+    }
+
+    state.pdfScope = event.currentTarget.value === "selected"
+        ? "selected"
+        : "whole"
+    renderSongBookPdfs()
+    renderSongList()
+})
+elements.songBookPdfsList.addEventListener("click", event => {
+    if (event.target.dataset?.action === "download-pdf") {
+        return downloadPdf(event.target.dataset.pdfId)
+    }
+})
 elements.songBookAccessForm.addEventListener(
     "submit",
     saveSongBookMember
@@ -418,6 +504,35 @@ elements.songList.addEventListener("click", async event => {
     if (action === "delete-song") {
         await requestSongDeletion(songId, event.target)
     }
+})
+elements.songList.addEventListener("change", event => {
+    if (
+        event.target.dataset?.action !== "select-pdf-song" ||
+        !isSongBookAdmin() ||
+        state.pdfScope !== "selected" ||
+        event.target.disabled ||
+        state.isGeneratingPdf ||
+        state.isSaving ||
+        state.deletingSongId !== null
+    ) {
+        return
+    }
+
+    const songId = event.target.dataset.songId
+    const song = songRows.get(songId)?.song
+    if (song === undefined) {
+        return
+    }
+
+    if (event.target.checked) {
+        state.pdfSelectedSongs.set(
+            songId,
+            displayValue(song.title, "Untitled song")
+        )
+    } else {
+        state.pdfSelectedSongs.delete(songId)
+    }
+    renderPdfControls()
 })
 elements.songForm.addEventListener("submit", saveSong)
 elements.addPartButton.addEventListener("click", addPart)
@@ -1306,12 +1421,10 @@ export async function loadSongBooks({
 
         if (canRefreshCurrentSelection) {
             if (selectedSummary !== undefined) {
-                state.selectedSongBook = {
+                updateSelectedBookAccess({
                     ...state.selectedSongBook,
                     ...selectedSummary
-                }
-                state.selectedSongBookAccessLevel =
-                    normalizeAccessLevel(selectedSummary.accessLevel)
+                })
             } else {
                 try {
                     const refreshed = await getSongBook(targetSongBookId)
@@ -1323,9 +1436,7 @@ export async function loadSongBooks({
                         return false
                     }
 
-                    state.selectedSongBook = refreshed
-                    state.selectedSongBookAccessLevel =
-                        normalizeAccessLevel(refreshed?.accessLevel)
+                    updateSelectedBookAccess(refreshed)
                 } catch (error) {
                     if (
                         requestId !== songBookListRequestId ||
@@ -1352,11 +1463,17 @@ export async function loadSongBooks({
 
             if (isSongBookAdmin() && refreshMembers) {
                 await loadSongBookMembers()
-            } else if (!isSongBookAdmin()) {
-                state.songBookMembers = []
-                state.memberPage = 1
-                state.memberHasNext = false
-                songBookMembersLoadFailed = false
+            }
+
+            if (showSuccessNotice) {
+                await loadSongBookPdfs({ force: true })
+            }
+            if (
+                requestId !== songBookListRequestId ||
+                requestAuthGeneration !== authGeneration ||
+                state.selectedSongBookId !== targetSongBookId
+            ) {
+                return false
             }
 
             renderSelectedSongBook()
@@ -1367,10 +1484,21 @@ export async function loadSongBooks({
             renderSongDetails()
             renderMutationControls()
         } else {
-            await selectSongBook(targetSongBookId, {
+            const selected = await selectSongBook(targetSongBookId, {
                 preserveNotice: !showSuccessNotice
             })
+            if (!selected) {
+                return false
+            }
         }
+    }
+
+    if (
+        requestId !== songBookListRequestId ||
+        requestAuthGeneration !== authGeneration ||
+        !isAuthenticated()
+    ) {
+        return false
     }
 
     if (succeeded && showSuccessNotice) {
@@ -1417,6 +1545,8 @@ export async function selectSongBook(
     }
     renderSongBookList()
     renderSelectedSongBook()
+    renderSongBookMembers()
+    renderSongList()
     renderCollectionState()
     renderSongDetails()
     renderSongBookControls()
@@ -1459,11 +1589,15 @@ export async function selectSongBook(
         renderCollectionState()
         renderMutationControls()
 
-        if (isSongBookAdmin()) {
-            await loadSongBookMembers({ showErrorNotice: true })
-        }
+        await Promise.all([
+            loadSongBookPdfs(),
+            isSongBookAdmin()
+                ? loadSongBookMembers({ showErrorNotice: true })
+                : Promise.resolve()
+        ])
 
-        return true
+        return state.selectedSongBookId === requestedId &&
+            requestAuthGeneration === authGeneration
     } catch (error) {
         if (
             requestId !== songBookSelectionRequestId ||
@@ -1654,6 +1788,21 @@ export async function saveSongBook(event) {
             showSuccessNotice: false,
             selectSongBookId: targetId
         })
+        if (
+            mutationId !== songBookMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== targetId
+        ) {
+            return false
+        }
+        await loadSongBookPdfs({ force: true })
+        if (
+            mutationId !== songBookMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== targetId
+        ) {
+            return false
+        }
         setNotice(
             booksReloaded ? "success" : "error",
             booksReloaded
@@ -2093,6 +2242,403 @@ export async function requestSongBookMemberRemoval(
     }
 }
 
+export async function loadSongBookPdfs({
+    page = state.pdfPage,
+    showErrorNotice = false,
+    showSuccessNotice = false,
+    force = false
+} = {}) {
+    if (
+        !canReadSongBookPdfs() ||
+        state.isAuthPending ||
+        (state.isLoadingPdfs && !force)
+    ) {
+        return false
+    }
+
+    const bookId = state.selectedSongBookId
+    const requestId = ++pdfListRequestId
+    const requestAuthGeneration = authGeneration
+    state.isLoadingPdfs = true
+    pdfListLoadFailed = false
+    if (showSuccessNotice) {
+        setNotice(null)
+        renderNotice()
+    }
+    renderSongBookPdfs()
+
+    try {
+        const pdfPage = await fetchAvailablePage(
+            requestedPage => getSongBookPdfs(bookId, requestedPage),
+            page
+        )
+
+        if (
+            requestId !== pdfListRequestId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId ||
+            state.isAuthPending ||
+            !canReadSongBookPdfs()
+        ) {
+            return false
+        }
+
+        pdfPage.items.forEach(readPdfMetadata)
+        state.songBookPdfs = pdfPage.items
+        state.pdfPage = pdfPage.page
+        state.pdfHasNext = pdfPage.hasNext
+        if (showSuccessNotice) {
+            setNotice("success", "PDF exports loaded.")
+            renderNotice()
+        }
+        return true
+    } catch (error) {
+        if (
+            requestId !== pdfListRequestId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId ||
+            state.isAuthPending
+        ) {
+            return false
+        }
+
+        if (await handleSelectedBookFailure(error)) {
+            return false
+        }
+
+        console.error(error)
+        pdfListLoadFailed = true
+        if (showErrorNotice) {
+            setNotice("error", getLoadPdfsErrorMessage(error))
+            renderNotice()
+        }
+        return false
+    } finally {
+        if (
+            requestId === pdfListRequestId &&
+            state.selectedSongBookId === bookId
+        ) {
+            state.isLoadingPdfs = false
+            renderSongBookPdfs()
+        }
+    }
+}
+
+export async function generateSongBookPdf(event) {
+    event.preventDefault()
+
+    if (
+        !isSongBookAdmin() ||
+        state.selectedSongBook === null ||
+        state.isAuthPending ||
+        state.isGeneratingPdf ||
+        state.isSavingSongBook ||
+        state.isSaving ||
+        state.deletingSongId !== null ||
+        !elements.songBookPdfForm.checkValidity()
+    ) {
+        elements.songBookPdfForm.reportValidity()
+        return false
+    }
+
+    const bookId = state.selectedSongBookId
+    const payload = {
+        includeChords: elements.songBookPdfIncludeChords.checked
+    }
+    if (state.pdfScope === "selected") {
+        if (state.pdfSelectedSongs.size === 0) {
+            setNotice(
+                "error",
+                "Select at least one song in the Songs list before " +
+                    "generating a PDF."
+            )
+            renderNotice()
+            return false
+        }
+        payload.songIds = [...state.pdfSelectedSongs.keys()]
+    }
+
+    const mutationId = ++pdfMutationId
+    const requestAuthGeneration = authGeneration
+    state.isGeneratingPdf = true
+    setNotice("info", "Generating PDF...")
+    renderPdfControls()
+    renderNotice()
+
+    try {
+        const created = readPdfMetadata(
+            await createSongBookPdf(bookId, payload)
+        )
+        if (
+            mutationId !== pdfMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId ||
+            state.isAuthPending ||
+            !isAuthenticated()
+        ) {
+            return false
+        }
+
+        state.songBookPdfs = [
+            created,
+            ...state.songBookPdfs.filter(pdf => pdf.id !== created.id)
+        ].slice(0, 50)
+        state.pdfPage = 1
+        renderSongBookPdfs()
+        const refreshed = await loadSongBookPdfs({
+            page: 1,
+            force: true
+        })
+        if (
+            mutationId !== pdfMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId
+        ) {
+            return false
+        }
+
+        setNotice(
+            refreshed ? "success" : "error",
+            refreshed
+                ? "PDF generated."
+                : "PDF generated, but the export list could not be " +
+                    "refreshed. Try Refresh PDFs."
+        )
+        renderNotice()
+        return true
+    } catch (error) {
+        if (
+            mutationId !== pdfMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId ||
+            state.isAuthPending
+        ) {
+            return false
+        }
+
+        if (await handleAuthenticationFailure(error)) {
+            return false
+        }
+
+        if (
+            error instanceof ApiError &&
+            [403, 404].includes(error.status)
+        ) {
+            try {
+                const book = await getSongBook(bookId)
+                if (
+                    mutationId !== pdfMutationId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== bookId
+                ) {
+                    return false
+                }
+
+                updateSelectedBookAccess(book)
+                setNotice(
+                    "error",
+                    error.status === 404
+                        ? "A selected song is no longer available. " +
+                            "Refresh songs and update your selection."
+                        : isSongBookAdmin()
+                            ? "PDF generation was not permitted. " +
+                                "Try Refresh song books."
+                            : "Only the song-book owner can generate PDFs."
+                )
+                renderNotice()
+                return false
+            } catch (bookError) {
+                if (
+                    mutationId !== pdfMutationId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== bookId
+                ) {
+                    return false
+                }
+                if (await handleSelectedBookFailure(bookError)) {
+                    return false
+                }
+                console.error(bookError)
+            }
+        }
+
+        console.error(error)
+        setNotice("error", getGeneratePdfErrorMessage(error))
+        renderNotice()
+        return false
+    } finally {
+        if (
+            mutationId === pdfMutationId &&
+            state.selectedSongBookId === bookId
+        ) {
+            state.isGeneratingPdf = false
+            renderPdfControls()
+        }
+    }
+}
+
+export async function downloadPdf(pdfId) {
+    if (
+        !canReadSongBookPdfs() ||
+        state.isAuthPending ||
+        state.downloadingPdfId !== null ||
+        !state.songBookPdfs.some(pdf => pdf.id === pdfId)
+    ) {
+        return false
+    }
+
+    const bookId = state.selectedSongBookId
+    const requestId = ++pdfDownloadRequestId
+    const requestAuthGeneration = authGeneration
+    state.downloadingPdfId = pdfId
+    renderPdfControls()
+
+    try {
+        const blob = await downloadSongBookPdf(bookId, pdfId)
+        if (
+            requestId !== pdfDownloadRequestId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId ||
+            state.isAuthPending ||
+            !canReadSongBookPdfs()
+        ) {
+            return false
+        }
+        if (
+            !(blob instanceof Blob) ||
+            blob.size === 0 ||
+            (
+                blob.type !== "" &&
+                !["application/pdf", "application/octet-stream"].includes(
+                    blob.type.split(";")[0]
+                )
+            )
+        ) {
+            throw new ApiError("The API returned an invalid PDF file.")
+        }
+
+        const objectUrl = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = objectUrl
+        link.download = pdfDownloadName(
+            state.selectedSongBook.name,
+            pdfId
+        )
+        try {
+            document.body.appendChild(link)
+            link.click()
+        } finally {
+            link.remove()
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+        }
+        return true
+    } catch (error) {
+        if (
+            requestId !== pdfDownloadRequestId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== bookId ||
+            state.isAuthPending
+        ) {
+            return false
+        }
+
+        if (error instanceof ApiError && error.status === 404) {
+            try {
+                const book = await getSongBook(bookId)
+                if (
+                    requestId !== pdfDownloadRequestId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== bookId
+                ) {
+                    return false
+                }
+
+                updateSelectedBookAccess(book)
+                const refreshed = await loadSongBookPdfs({
+                    force: true
+                })
+                if (state.selectedSongBookId === bookId) {
+                    setNotice(
+                        "error",
+                        refreshed
+                            ? "That PDF export is no longer available. " +
+                                "The list was refreshed."
+                            : "That PDF export is no longer available. " +
+                                "The PDF list could not be refreshed. " +
+                                "Try Refresh PDFs."
+                    )
+                    renderNotice()
+                }
+                return false
+            } catch (bookError) {
+                if (
+                    requestId !== pdfDownloadRequestId ||
+                    requestAuthGeneration !== authGeneration ||
+                    state.selectedSongBookId !== bookId
+                ) {
+                    return false
+                }
+                if (await handleSelectedBookFailure(bookError)) {
+                    return false
+                }
+                console.error(bookError)
+            }
+        }
+
+        if (await handleSelectedBookFailure(error)) {
+            return false
+        }
+        console.error(error)
+        setNotice("error", getDownloadPdfErrorMessage(error))
+        renderNotice()
+        return false
+    } finally {
+        if (
+            requestId === pdfDownloadRequestId &&
+            state.selectedSongBookId === bookId
+        ) {
+            state.downloadingPdfId = null
+            renderPdfControls()
+        }
+    }
+}
+
+function readPdfMetadata(pdf) {
+    if (
+        pdf === null ||
+        typeof pdf !== "object" ||
+        typeof pdf.id !== "string" ||
+        pdf.id.trim() === "" ||
+        typeof pdf.includeChords !== "boolean" ||
+        typeof pdf.isWholeBook !== "boolean" ||
+        !Number.isSafeInteger(pdf.songCount) ||
+        pdf.songCount < 0 ||
+        !Array.isArray(pdf.selectedSongs) ||
+        !pdf.selectedSongs.every(song =>
+            song !== null &&
+            typeof song === "object" &&
+            typeof song.id === "string" &&
+            typeof song.title === "string"
+        ) ||
+        typeof pdf.generatedAtUtc !== "string" ||
+        Number.isNaN(Date.parse(pdf.generatedAtUtc)) ||
+        typeof pdf.isOutdated !== "boolean"
+    ) {
+        throw new ApiError("The API returned invalid PDF metadata.")
+    }
+
+    return pdf
+}
+
+function pdfDownloadName(bookName, pdfId) {
+    const safeBookName = displayValue(bookName, "song-book")
+        .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+        .replace(/[. ]+$/g, "")
+        .slice(0, 80) || "song-book"
+    const safeId = pdfId.replace(/[^\w-]/g, "_").slice(0, 64)
+    return `${safeBookName}-${safeId || "export"}.pdf`
+}
+
 export function renderSongBookList() {
     if (renderedBooks !== state.songBooks) {
         const items = []
@@ -2234,6 +2780,7 @@ export function renderSelectedSongBook() {
         elements.renameSongBookButton.hidden = true
         elements.deleteSongBookButton.hidden = true
         elements.songBookAccessPanel.hidden = true
+        renderSongBookPdfs()
         return
     }
 
@@ -2254,6 +2801,152 @@ export function renderSelectedSongBook() {
     elements.renameSongBookButton.hidden = !admin
     elements.deleteSongBookButton.hidden = !admin
     elements.songBookAccessPanel.hidden = !admin
+    renderSongBookPdfs()
+}
+
+export function renderSongBookPdfs() {
+    const available = canReadSongBookPdfs()
+    elements.songBookPdfsPanel.hidden = !available
+    elements.songBookPdfsList.setAttribute(
+        "aria-busy",
+        String(state.isLoadingPdfs)
+    )
+    renderPdfList()
+    renderPdfControls()
+
+    if (!available) {
+        elements.songBookPdfsState.textContent = ""
+    } else if (state.isLoadingPdfs) {
+        elements.songBookPdfsState.textContent =
+            "Loading PDF exports..."
+    } else if (pdfListLoadFailed) {
+        elements.songBookPdfsState.textContent =
+            "PDF exports could not be refreshed. Displayed exports " +
+            "and statuses may be out of date. Try Refresh PDFs."
+    } else if (state.songBookPdfs.length === 0) {
+        elements.songBookPdfsState.textContent =
+            state.pdfPage === 1
+                ? "No PDF exports yet."
+                : "No PDFs on this page. Go to a previous page."
+    } else {
+        elements.songBookPdfsState.textContent = ""
+    }
+}
+
+function renderPdfList() {
+    if (renderedPdfs === state.songBookPdfs) {
+        return
+    }
+
+    const items = state.songBookPdfs.map(pdf => {
+        const item = document.createElement("li")
+        item.className = "pdf-list__item"
+
+        const format = document.createElement("strong")
+        format.textContent = pdf.includeChords
+            ? "With chords"
+            : "Lyrics only"
+
+        const scope = document.createElement("span")
+        const songCount = `${pdf.songCount} ` +
+            (pdf.songCount === 1 ? "song" : "songs")
+        scope.textContent = pdf.isWholeBook
+            ? `Entire book (${songCount})`
+            : `Selected songs (${songCount}): ` +
+                pdf.selectedSongs.map(song =>
+                    displayValue(song.title, "Untitled song")
+                ).join(", ")
+
+        const metadata = document.createElement("div")
+        metadata.className = "pdf-list__meta"
+        const generated = document.createElement("time")
+        generated.dateTime = pdf.generatedAtUtc
+        generated.textContent =
+            `Generated ${new Date(pdf.generatedAtUtc).toLocaleString()}`
+        const status = document.createElement("span")
+        status.className = pdf.isOutdated
+            ? "pdf-list__status--outdated"
+            : ""
+        status.textContent = pdf.isOutdated
+            ? "Outdated — song book changed"
+            : "Up to date"
+        metadata.appendChild(generated)
+        metadata.appendChild(status)
+
+        const downloadButton = document.createElement("button")
+        downloadButton.className = "button button--neutral"
+        downloadButton.type = "button"
+        downloadButton.dataset.action = "download-pdf"
+        downloadButton.dataset.pdfId = pdf.id
+        downloadButton.textContent = "Download PDF"
+        downloadButton.setAttribute(
+            "aria-label",
+            `Download ${format.textContent.toLowerCase()} PDF, ` +
+                scope.textContent
+        )
+
+        item.appendChild(format)
+        item.appendChild(scope)
+        item.appendChild(metadata)
+        item.appendChild(downloadButton)
+        return item
+    })
+
+    elements.songBookPdfsList.replaceChildren(...items)
+    renderedPdfs = state.songBookPdfs
+}
+
+function renderPdfControls() {
+    const available = canReadSongBookPdfs()
+    const admin = available && isSongBookAdmin()
+    const busy = state.isGeneratingPdf ||
+        state.isSavingSongBook ||
+        state.isSaving ||
+        state.deletingSongId !== null ||
+        state.isAuthPending
+    renderPageControls(elements.pdfPagination, {
+        page: state.pdfPage,
+        hasNext: state.pdfHasNext,
+        busy: state.isLoadingPdfs || busy,
+        available
+    })
+    elements.refreshSongBookPdfsButton.disabled =
+        !available || state.isLoadingPdfs || busy
+    elements.songBookPdfForm.hidden = !admin
+    elements.songBookPdfForm.setAttribute(
+        "aria-busy",
+        String(state.isGeneratingPdf)
+    )
+    elements.songBookPdfScope.value = state.pdfScope
+    for (const control of Array.from(elements.songBookPdfForm.elements)) {
+        control.disabled = !admin || busy
+    }
+
+    const selecting = admin && state.pdfScope === "selected"
+    elements.songBookPdfSelectionState.hidden = !selecting
+    elements.songBookPdfSelectionState.textContent = selecting
+        ? state.pdfSelectedSongs.size === 0
+            ? "No songs selected. Choose songs in the Songs list below; " +
+                "use song pages to reach every song."
+            : `${state.pdfSelectedSongs.size} songs selected: ` +
+                `${[...state.pdfSelectedSongs.values()].join(", ")}. ` +
+                "Use song pages to select more."
+        : ""
+
+    for (const button of findDescendants(
+        elements.songBookPdfsList,
+        element => element.tagName === "BUTTON"
+    )) {
+        button.disabled = !available ||
+            state.isLoadingPdfs ||
+            state.downloadingPdfId !== null ||
+            state.isAuthPending
+    }
+    for (const row of songRows.values()) {
+        if (row.pdfCheckbox !== null) {
+            row.pdfCheckbox.disabled = !selecting || busy
+        }
+    }
 }
 
 export function renderSongBookMembers() {
@@ -2389,6 +3082,15 @@ export async function loadSongs({
         state.songs = songsPage.items
         state.songPage = songsPage.page
         state.songHasNext = songsPage.hasNext
+        for (const song of state.songs) {
+            if (state.pdfSelectedSongs.has(song.id)) {
+                state.pdfSelectedSongs.set(
+                    song.id,
+                    displayValue(song.title, "Untitled song")
+                )
+            }
+        }
+        renderPdfControls()
         collectionLoadFailed = false
 
         let selectionWasRemoved = false
@@ -2465,6 +3167,14 @@ export async function loadSongs({
         }
 
         if (showSuccessNotice) {
+            await loadSongBookPdfs({ force: true })
+            if (
+                requestId !== songCollectionRequestId ||
+                requestAuthGeneration !== authGeneration ||
+                state.selectedSongBookId !== songBookId
+            ) {
+                return false
+            }
             setNotice(
                 "success",
                 selectionWasRemoved
@@ -2824,6 +3534,16 @@ export async function saveSong(event) {
         }
 
         mutationSucceeded = true
+        if (
+            saveMode === "edit" &&
+            state.pdfSelectedSongs.has(selectedSongId)
+        ) {
+            state.pdfSelectedSongs.set(
+                selectedSongId,
+                displayValue(payload.title, "Untitled song")
+            )
+            renderPdfControls()
+        }
         closeEditor()
         let collectionLoaded
         let detailLoaded
@@ -2853,6 +3573,14 @@ export async function saveSong(event) {
             return false
         }
 
+        await loadSongBookPdfs({ force: true })
+        if (
+            mutationId !== songMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== selectedSongBookId
+        ) {
+            return false
+        }
         const postSaveNotice = getPostSaveNotice({
             collectionLoaded,
             detailLoaded,
@@ -2969,6 +3697,8 @@ export async function requestSongDeletion(id, triggerButton = null) {
         if (state.selectedSongId === id) {
             clearSelection()
         }
+        state.pdfSelectedSongs.delete(id)
+        renderPdfControls()
 
         const collectionLoaded = await loadSongs({
             showSuccessNotice: false
@@ -2982,6 +3712,14 @@ export async function requestSongDeletion(id, triggerButton = null) {
             return false
         }
 
+        await loadSongBookPdfs({ force: true })
+        if (
+            mutationId !== songMutationId ||
+            requestAuthGeneration !== authGeneration ||
+            state.selectedSongBookId !== songBookId
+        ) {
+            return false
+        }
 
         if (state.selectedSongBookId !== songBookId) {
             focusTarget = "book-list"
@@ -3021,10 +3759,19 @@ export async function requestSongDeletion(id, triggerButton = null) {
             if (state.selectedSongId === id) {
                 clearSelection()
             }
+            state.pdfSelectedSongs.delete(id)
+            renderPdfControls()
 
             const collectionLoaded = await loadSongs({
                 showSuccessNotice: false
             })
+            if (state.selectedSongBookId !== songBookId) {
+                return false
+            }
+            await loadSongBookPdfs({ force: true })
+            if (state.selectedSongBookId !== songBookId) {
+                return false
+            }
             if (collectionLoaded) {
                 setNotice(
                     "info",
@@ -3073,8 +3820,11 @@ export async function requestSongDeletion(id, triggerButton = null) {
 
 export function renderSongList(songs = state.songs) {
     const writeAccess = canManageSongs()
+    const pdfMode = isSongBookAdmin() &&
+        state.pdfScope === "selected"
     if (renderedSongs !== songs ||
-        renderedSongWriteAccess !== writeAccess) {
+        renderedSongWriteAccess !== writeAccess ||
+        renderedSongPdfMode !== pdfMode) {
         const items = []
         songRows = new Map()
 
@@ -3099,6 +3849,31 @@ export function renderSongList(songs = state.songs) {
             actions.className = "song-list__actions"
             actions.appendChild(viewButton)
 
+            let pdfCheckbox = null
+            let pdfOption = null
+            if (pdfMode) {
+                pdfOption = document.createElement("label")
+                pdfOption.className = "song-list__pdf-option"
+                pdfCheckbox = document.createElement("input")
+                pdfCheckbox.type = "checkbox"
+                pdfCheckbox.dataset.action = "select-pdf-song"
+                pdfCheckbox.dataset.songId = song.id
+                pdfCheckbox.checked =
+                    state.pdfSelectedSongs.has(song.id)
+                pdfCheckbox.disabled = state.isGeneratingPdf
+                pdfCheckbox.setAttribute(
+                    "aria-label",
+                    `Select ${displayValue(
+                        song.title,
+                        "Untitled song"
+                    )} for PDF`
+                )
+                pdfOption.appendChild(pdfCheckbox)
+                pdfOption.appendChild(
+                    document.createTextNode("Select for PDF")
+                )
+            }
+
             let deleteButton = null
             if (writeAccess) {
                 deleteButton = document.createElement("button")
@@ -3115,12 +3890,16 @@ export function renderSongList(songs = state.songs) {
             }
 
             listItem.appendChild(summary)
+            if (pdfOption !== null) {
+                listItem.appendChild(pdfOption)
+            }
             listItem.appendChild(actions)
             items.push(listItem)
             songRows.set(song.id, {
                 listItem,
                 viewButton,
                 deleteButton,
+                pdfCheckbox,
                 song
             })
         }
@@ -3128,6 +3907,7 @@ export function renderSongList(songs = state.songs) {
         elements.songList.replaceChildren(...items)
         renderedSongs = songs
         renderedSongWriteAccess = writeAccess
+        renderedSongPdfMode = pdfMode
         renderedSongSelection = null
         renderedSongSaving = null
         renderedSongDeletion = null
@@ -3165,6 +3945,12 @@ export function renderSongList(songs = state.songs) {
             if (row.deleteButton !== null) {
                 row.deleteButton.disabled =
                     state.isSaving || state.deletingSongId === id
+            }
+            if (row.pdfCheckbox !== null) {
+                row.pdfCheckbox.disabled =
+                    state.isGeneratingPdf ||
+                    state.isSaving ||
+                    state.deletingSongId !== null
             }
         }
         renderedSongSaving = state.isSaving
@@ -4015,6 +4801,8 @@ function renderSongBookControls() {
     )) {
         button.disabled = savingAccess || songMutationPending
     }
+
+    renderPdfControls()
 }
 
 function renderBookPageControls() {
@@ -4394,6 +5182,15 @@ function canManageSongs() {
         )
 }
 
+function canReadSongBookPdfs() {
+    return isAuthenticated() &&
+        state.selectedSongBookId !== null &&
+        state.selectedSongBook !== null &&
+        ["admin", "editor", "reader"].includes(
+            state.selectedSongBookAccessLevel
+        )
+}
+
 function focusAuthView(view) {
     const focusTarget = new Map([
         ["login", elements.loginEmail],
@@ -4439,6 +5236,9 @@ function clearSelectedSongBook({ preserveEditor = false } = {}) {
     songBookSelectionRequestId += 1
     songBookMembersRequestId += 1
     songBookAccessMutationId += 1
+    pdfListRequestId += 1
+    pdfMutationId += 1
+    pdfDownloadRequestId += 1
     clearSongState({ preserveEditor })
     state.selectedSongBookId = null
     state.selectedSongBook = null
@@ -4450,8 +5250,39 @@ function clearSelectedSongBook({ preserveEditor = false } = {}) {
     state.isLoadingSongBookMembers = false
     state.isSavingSongBookAccess = false
     songBookMembersLoadFailed = false
+    state.songBookPdfs = []
+    state.pdfPage = 1
+    state.pdfHasNext = false
+    state.pdfScope = "whole"
+    state.pdfSelectedSongs = new Map()
+    state.isLoadingPdfs = false
+    state.isGeneratingPdf = false
+    state.downloadingPdfId = null
+    pdfListLoadFailed = false
+    elements.songBookPdfIncludeChords.checked = true
     elements.songBookAccessEmail.value = ""
     elements.songBookAccessLevel.value = "reader"
+}
+
+function updateSelectedBookAccess(book) {
+    state.selectedSongBook = book
+    state.selectedSongBookAccessLevel =
+        normalizeAccessLevel(book?.accessLevel)
+    if (!isSongBookAdmin()) {
+        songBookMembersRequestId += 1
+        state.songBookMembers = []
+        state.memberPage = 1
+        state.memberHasNext = false
+        state.isLoadingSongBookMembers = false
+        songBookMembersLoadFailed = false
+        state.pdfScope = "whole"
+        state.pdfSelectedSongs = new Map()
+    }
+
+    renderSelectedSongBook()
+    renderSongBookMembers()
+    renderSongList()
+    renderMutationControls()
 }
 
 function clearPrivateState({ preserveEditor = false } = {}) {
@@ -4864,6 +5695,54 @@ function getLoadSongBooksErrorMessage(error) {
     }
 
     return "Could not load song books. Try again." + staleMessage
+}
+
+function getLoadPdfsErrorMessage(error) {
+    const staleMessage = state.songBookPdfs.length === 0
+        ? ""
+        : " The displayed exports may be out of date."
+
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "PDF exports could not be refreshed." + staleMessage
+    }
+
+    if (
+        error instanceof ApiError &&
+        error.status !== null &&
+        error.status >= 500
+    ) {
+        return "The server could not load PDF exports. Try again." +
+            staleMessage
+    }
+
+    return "Could not load PDF exports. Try Refresh PDFs." +
+        staleMessage
+}
+
+function getGeneratePdfErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 400) {
+        const detail = getSafeApiDetail(error)
+        return detail === null
+            ? "The PDF request was rejected. Check the selected songs."
+            : `The PDF request was rejected. ${toSentence(detail)}`
+    }
+
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not generate the PDF. It may have been created; " +
+            "try Refresh PDFs before retrying."
+    }
+
+    return "Could not generate the PDF. Try Refresh PDFs before retrying."
+}
+
+function getDownloadPdfErrorMessage(error) {
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "Try downloading the PDF again."
+    }
+
+    return "Could not download the PDF. Try again."
 }
 
 function getLoadSongBookErrorMessage(error) {

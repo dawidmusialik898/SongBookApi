@@ -8,6 +8,9 @@ song lists contain summaries rather than full lyrics.
 Song parts can also carry optional guitar chords anchored above individual
 lyric characters; the song view can show or hide them without changing the
 lyrics.
+Owners can save whole-book or selected-song PDFs with or without chords.
+Anyone with read access can download saved PDFs and see when a book change
+has made an export outdated.
 
 ```text
 client/   Browser assets, Node tests, and the original learning plan

@@ -35,7 +35,8 @@ dependency advisory remains unresolved or unapproved.
 
 Use a current Ubuntu/Debian release with systemd credentials, the ASP.NET
 Core **10 runtime**, Caddy, `sqlite3`, `restic`, `curl`, `rsync`, OpenSSH, and
-`flock` (from `util-linux`). Install the runtime and Caddy using their
+`flock` (from `util-linux`). The PDF renderer needs `fonts-dejavu-core` for
+monospaced chord placement. Install the runtime and Caddy using their
 [official .NET Linux instructions](https://learn.microsoft.com/dotnet/core/install/linux)
 and [Caddy Debian/Ubuntu instructions](https://caddyserver.com/docs/install#debian-ubuntu-raspbian).
 The host does not need the .NET SDK. Install the remaining packages and
@@ -43,7 +44,7 @@ confirm that `dotnet --list-runtimes` includes `Microsoft.AspNetCore.App 10`:
 
 ```sh
 sudo apt update
-sudo apt install sqlite3 restic curl rsync openssh-client util-linux
+sudo apt install sqlite3 restic curl rsync openssh-client util-linux fonts-dejavu-core
 dotnet --list-runtimes
 ```
 

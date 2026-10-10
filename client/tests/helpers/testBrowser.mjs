@@ -276,6 +276,11 @@ export function createFetchResponse({
         },
         async text() {
             return serializedBody
+        },
+        async blob() {
+            return new Blob([serializedBody], {
+                type: responseContentType ?? ""
+            })
         }
     }
 }
@@ -286,6 +291,7 @@ export function installTestBrowser(
         authHandler = null,
         initialUrl = "https://localhost/",
         moderationHandler = null,
+        pdfHandler = null,
         songBookHandler = null
     } = {}
 ) {
@@ -609,6 +615,93 @@ export function installTestBrowser(
         ],
         [
             "section",
+            "song-book-pdfs-panel",
+            "",
+            true,
+            "selected-song-book-panel"
+        ],
+        [
+            "button",
+            "refresh-song-book-pdfs-button",
+            "Refresh PDFs",
+            false,
+            "song-book-pdfs-panel"
+        ],
+        [
+            "p",
+            "song-book-pdfs-state",
+            "",
+            false,
+            "song-book-pdfs-panel"
+        ],
+        [
+            "ul",
+            "song-book-pdfs-list",
+            "",
+            false,
+            "song-book-pdfs-panel"
+        ],
+        [
+            "nav",
+            "pdf-pagination",
+            "",
+            true,
+            "song-book-pdfs-panel"
+        ],
+        [
+            "button",
+            "previous-pdf-page-button",
+            "Previous PDFs",
+            false,
+            "pdf-pagination"
+        ],
+        ["span", "pdf-page-status", "Page 1", false, "pdf-pagination"],
+        [
+            "button",
+            "next-pdf-page-button",
+            "Next PDFs",
+            false,
+            "pdf-pagination"
+        ],
+        [
+            "form",
+            "song-book-pdf-form",
+            "",
+            true,
+            "song-book-pdfs-panel"
+        ],
+        [
+            "select",
+            "song-book-pdf-scope",
+            "",
+            false,
+            "song-book-pdf-form",
+            "scope"
+        ],
+        [
+            "p",
+            "song-book-pdf-selection-state",
+            "",
+            true,
+            "song-book-pdf-form"
+        ],
+        [
+            "input",
+            "song-book-pdf-include-chords",
+            "",
+            false,
+            "song-book-pdf-form",
+            "includeChords"
+        ],
+        [
+            "button",
+            "generate-song-book-pdf-button",
+            "Generate PDF",
+            false,
+            "song-book-pdf-form"
+        ],
+        [
+            "section",
             "song-book-access-panel",
             "",
             true,
@@ -799,6 +892,8 @@ export function installTestBrowser(
     }
 
     document.getElementById("song-book-access-level").value = "reader"
+    document.getElementById("song-book-pdf-scope").value = "whole"
+    document.getElementById("song-book-pdf-include-chords").checked = true
     const songList = document.getElementById("song-list")
     const songBookList = document.getElementById("song-book-list")
 
@@ -907,6 +1002,24 @@ export function installTestBrowser(
             }
 
             songBookRequests.push(request)
+
+            if (segments[2] === "pdfs") {
+                const response = pdfHandler === null
+                    ? request.method === "GET" &&
+                        segments.length === 3
+                        ? { body: [] }
+                        : {
+                            body: { title: "Unexpected PDF request" },
+                            status: 500
+                        }
+                    : await pdfHandler(request)
+                return createFetchResponse(
+                    request.method === "GET" &&
+                        segments.length === 3
+                        ? toPagedResponse(response, request)
+                        : response
+                )
+            }
 
             if (songBookHandler !== null) {
                 const response = await songBookHandler(request)

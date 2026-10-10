@@ -245,6 +245,67 @@ a **Show chords** toggle without altering the saved lyrics.
 Apply the `AddPartChords` migration before deploying this feature; it adds
 only the chord annotations table, leaving existing songs and parts intact.
 
+## Saved PDF exports
+
+The selected book has an **Export PDFs** panel. Only its owner can generate
+a PDF of all songs or select individual songs (including songs beyond the
+current list page). The owner chooses lyrics-only or with-chords; both
+variants, and earlier generations, remain saved and downloadable. Any
+current Reader, Editor, or owner can view and download saved exports. A
+removed collaborator loses access to both the list and the download route
+immediately; a PDF is never exposed as a public static file.
+
+| Method | Path | Minimum access | Success |
+| --- | --- | --- | --- |
+| `GET` | `/songbooks/{bookId}/pdfs?page=N` | Reader | `200` paged export metadata |
+| `POST` | `/songbooks/{bookId}/pdfs` | Owner | `201` metadata and a download `Location` |
+| `GET` | `/songbooks/{bookId}/pdfs/{pdfId}/download` | Reader | `200` `application/pdf` attachment |
+
+Generation requires the usual `X-CSRF-TOKEN`. Omit `songIds` to export the
+whole book (including an empty book); otherwise supply a nonempty array of
+distinct song IDs belonging to that book. Songs appear in title/ID order,
+as in the paged song list:
+
+```json
+{ "includeChords": true, "songIds": ["song-guid", "another-song-guid"] }
+```
+
+`includeChords` is required. Invalid selections return `400`, an unknown or
+inaccessible book/export returns `404`, and a Reader or Editor attempting
+generation receives `403`. The paged list uses the same `items`, `page`,
+`hasNext` shape and 50-item page size as other collections, newest first.
+An export's metadata looks like:
+
+```json
+{
+  "id": "pdf-guid",
+  "includeChords": true,
+  "isWholeBook": false,
+  "songCount": 2,
+  "selectedSongs": [
+    { "id": "song-guid", "title": "First song" },
+    { "id": "another-song-guid", "title": "Second song" }
+  ],
+  "generatedAtUtc": "2026-09-30T20:00:00Z",
+  "isOutdated": false
+}
+```
+
+For whole-book exports `selectedSongs` is empty. Book renames and song
+creation, updates, or deletion increment a content revision. Older PDFs
+remain unchanged and are marked `isOutdated: true` if their saved revision
+differs from the current book. Changing collaborator permissions does not
+change PDF content or mark it outdated. Generated PDFs are stored as SQLite
+BLOBs under their book and removed when it is deleted; the existing SQLite
+backup/restore includes them. Downloads set `Cache-Control: private, no-store`
+and use server-constructed attachment filenames.
+
+Apply the `StoreSongBookPdfs` migration before using this feature in
+Production. PDF rendering uses QuestPDF (Community licensing is free for
+eligible open-source/individual projects; other deployments must check its
+license terms) and requires the host's DejaVu Sans Mono font for chord
+alignment. See the deployment guide for the font package.
+
 ## Paged collections
 
 The four list routes above default to page 1 and accept a positive integer
@@ -274,16 +335,16 @@ the song-book/title/ID order used for pages.
 
 ## Authorization behavior
 
-- Reader: view the book and songs.
+- Reader: view the book, songs, and saved PDFs.
 - Editor: Reader permissions plus song create/update/delete.
 - Admin (derived only from `OwnerId`): Editor permissions plus rename/delete
-  book and collaborator management.
+  book, collaborator management, and PDF generation.
 - Missing or inaccessible private resources return `404`.
 - A Reader song mutation or collaborator admin action returns `403`.
 - Permission is queried from SQLite on every request, so revocation is
   immediate.
 
-Deleting a book cascades to its songs, parts, chords, and access entries. Deleting a
+Deleting a book cascades to its songs, parts, chords, PDFs, and access entries. Deleting a
 collaborator account cascades its access rows. Owner account deletion is
 restricted so it cannot silently delete owned books.
 

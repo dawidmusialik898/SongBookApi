@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using QuestPDF.Infrastructure;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
 using SongBookApi.Service.Endpoints;
@@ -15,6 +16,8 @@ if (!migrateOnly && args.Contains("--migrate", StringComparer.Ordinal))
 }
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(migrateOnly ? [] : args);
+QuestPDF.Settings.License = LicenseType.Community;
+QuestPDF.Settings.UseSystemFonts = true;
 
 if (!builder.Environment.IsDevelopment() &&
     Environment.GetEnvironmentVariable("CREDENTIALS_DIRECTORY") is { } credentialsDirectory)
@@ -170,6 +173,7 @@ app.MapAuthEndpoints();
 app.MapModerationEndpoints();
 app.MapSongBookEndpoints();
 app.MapSongEndpoints();
+app.MapSongBookPdfEndpoints();
 
 app.Run();
 

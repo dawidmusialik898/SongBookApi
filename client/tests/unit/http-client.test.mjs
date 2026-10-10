@@ -101,6 +101,36 @@ test("request preserves structured HTTP and network errors", async () => {
     }
 })
 
+test("request can read binary downloads without passing responseType to fetch", async () => {
+    const originalFetch = globalThis.fetch
+    const calls = []
+    globalThis.fetch = async (url, options) => {
+        calls.push({ url, options })
+        return new Response("%PDF-1.7", {
+            headers: { "Content-Type": "application/pdf" }
+        })
+    }
+
+    try {
+        const pdf = await request("/songbooks/book/pdfs/pdf/download", {
+            responseType: "blob"
+        })
+        assert.equal(await pdf.text(), "%PDF-1.7")
+        assert.equal(pdf.type, "application/pdf")
+        assert.equal(calls[0].options.credentials, "same-origin")
+        assert.equal(calls[0].options.responseType, undefined)
+        await assert.rejects(
+            request("/songbooks/book/pdfs/missing/download", {
+                responseType: "other"
+            }),
+            TypeError
+        )
+        assert.equal(calls.length, 1)
+    } finally {
+        globalThis.fetch = originalFetch
+    }
+})
+
 function jsonResponse(
     body,
     status = 200,

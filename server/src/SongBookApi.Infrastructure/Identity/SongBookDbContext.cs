@@ -11,6 +11,7 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
 {
     public DbSet<SongBook> SongBooks => Set<SongBook>();
     public DbSet<SongBookAccess> SongBookAccessEntries => Set<SongBookAccess>();
+    public DbSet<SongBookPdf> SongBookPdfs => Set<SongBookPdf>();
     public DbSet<Song> Songs => Set<Song>();
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<Chord> Chords => Set<Chord>();
@@ -66,6 +67,20 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
             entity.HasOne<ApplicationUser>()
                 .WithMany()
                 .HasForeignKey(access => access.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<SongBookPdf>(entity =>
+        {
+            entity.Property(pdf => pdf.SelectedSongsJson).IsRequired();
+            entity.Property(pdf => pdf.Content).IsRequired();
+            entity.Property(pdf => pdf.GeneratedAtUtc).HasConversion(
+                value => value.UtcTicks,
+                ticks => new DateTimeOffset(ticks, TimeSpan.Zero));
+            entity.HasIndex(pdf => new { pdf.SongBookId, pdf.GeneratedAtUtc });
+            entity.HasOne(pdf => pdf.SongBook)
+                .WithMany()
+                .HasForeignKey(pdf => pdf.SongBookId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

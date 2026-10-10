@@ -29,6 +29,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
 
     public async Task<Song> AddAsync(Guid songBookId, Song song)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
         DateTimeOffset now = DateTimeOffset.UtcNow;
         song.Id = song.Id == Guid.Empty ? Guid.NewGuid() : song.Id;
         song.SongBookId = songBookId;
@@ -49,6 +50,8 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
 
         dbContext.Songs.Add(song);
         await dbContext.SaveChangesAsync();
+        await MarkBookChangedAsync(songBookId);
+        await transaction.CommitAsync();
         return song;
     }
 
@@ -154,6 +157,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
         song.Tempo = replacement.Tempo;
         song.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync();
+        await MarkBookChangedAsync(songBookId);
         await transaction.CommitAsync();
         song.Parts = finalParts;
         return true;
@@ -168,8 +172,18 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             return false;
         }
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
         dbContext.Songs.Remove(song);
         await dbContext.SaveChangesAsync();
+        await MarkBookChangedAsync(songBookId);
+        await transaction.CommitAsync();
         return true;
     }
+
+    private async Task MarkBookChangedAsync(Guid songBookId) =>
+        await dbContext.SongBooks
+            .Where(book => book.Id == songBookId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(book => book.ContentRevision, book => book.ContentRevision + 1)
+                .SetProperty(book => book.UpdatedAtUtc, DateTimeOffset.UtcNow));
 }

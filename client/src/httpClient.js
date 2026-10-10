@@ -14,6 +14,11 @@ export class ApiError extends Error {
 
 export async function request(url, options = {}) {
     const method = (options.method ?? "GET").toUpperCase()
+    const responseType = options.responseType ?? "json"
+    if (!["json", "blob"].includes(responseType)) {
+        throw new TypeError("Unsupported response type.")
+    }
+
     const headers = new Headers(options.headers ?? {})
     const fetchOptions = {
         ...options,
@@ -23,6 +28,7 @@ export async function request(url, options = {}) {
     }
 
     delete fetchOptions.json
+    delete fetchOptions.responseType
 
     if (Object.hasOwn(options, "json")) {
         headers.set("Content-Type", "application/json")
@@ -33,7 +39,7 @@ export async function request(url, options = {}) {
         headers.set("X-CSRF-TOKEN", await getAntiforgeryToken())
     }
 
-    return send(url, fetchOptions)
+    return send(url, fetchOptions, responseType)
 }
 
 export function resetAntiforgeryToken() {
@@ -67,7 +73,7 @@ async function getAntiforgeryToken() {
     return antiforgeryTokenPromise
 }
 
-async function send(url, options) {
+async function send(url, options, responseType = "json") {
     let response
 
     try {
@@ -93,6 +99,10 @@ async function send(url, options) {
                 details
             }
         )
+    }
+
+    if (responseType === "blob") {
+        return response.blob()
     }
 
     if (response.status === 204 || !isJsonResponse(response)) {

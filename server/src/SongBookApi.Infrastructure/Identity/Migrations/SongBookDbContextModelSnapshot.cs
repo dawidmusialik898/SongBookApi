@@ -257,6 +257,9 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("ContentRevision")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -320,6 +323,45 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         {
                             t.HasCheckConstraint("CK_SongBookAccessEntries_AccessLevel", "\"AccessLevel\" IN ('Reader', 'Editor')");
                         });
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.SongBookPdf", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<long>("ContentRevision")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("GeneratedAtUtc")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IncludeChords")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsWholeBook")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SelectedSongsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SongBookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SongCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SongBookId", "GeneratedAtUtc");
+
+                    b.ToTable("SongBookPdfs");
                 });
 
             modelBuilder.Entity("SongBookApi.Infrastructure.Identity.ApplicationUser", b =>
@@ -487,6 +529,17 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                     b.HasOne("SongBookApi.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SongBook");
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.SongBookPdf", b =>
+                {
+                    b.HasOne("SongBookApi.Domain.Entities.SongBook", "SongBook")
+                        .WithMany()
+                        .HasForeignKey("SongBookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

@@ -15,8 +15,8 @@ function getUserUrl(userId) {
     return `${USERS_URL}/${encodeURIComponent(userId)}`
 }
 
-export function getManagedUsers(page = 1) {
-    return request(pageUrl(USERS_URL, page))
+export function getManagedUsers(page = 1, { signal } = {}) {
+    return request(pageUrl(USERS_URL, page), { signal })
 }
 
 export function setManagedUserRole(userId, role) {

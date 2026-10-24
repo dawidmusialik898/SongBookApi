@@ -128,6 +128,47 @@ test("songBooksApi rejects blank resource IDs before fetch", () => {
     assert.equal(calls, 0)
 })
 
+test("song-book GET wrappers pass AbortSignals through", async () => {
+    const calls = []
+    const originalFetch = globalThis.fetch
+    const signal = new AbortController().signal
+    globalThis.fetch = async (url, options = {}) => {
+        calls.push({
+            signal: options.signal,
+            url: String(url)
+        })
+        return jsonResponse({ items: [], page: 1, hasNext: false })
+    }
+
+    try {
+        await songBooksApi.getSongBooks(2, { signal })
+        await songBooksApi.getSongBook("book / one", { signal })
+        await songBooksApi.getSongBookAccess("book / one", 3, { signal })
+        await songBooksApi.getSongBookPdfs("book / one", 4, { signal })
+    } finally {
+        globalThis.fetch = originalFetch
+    }
+
+    assert.deepEqual(calls, [
+        {
+            signal,
+            url: "/songbooks?page=2"
+        },
+        {
+            signal,
+            url: "/songbooks/book%20%2F%20one"
+        },
+        {
+            signal,
+            url: "/songbooks/book%20%2F%20one/access?page=3"
+        },
+        {
+            signal,
+            url: "/songbooks/book%20%2F%20one/pdfs?page=4"
+        }
+    ])
+})
+
 test("PDF API pages, generation bodies, and downloads use the nested book URL", async () => {
     const calls = []
     const metadata = {

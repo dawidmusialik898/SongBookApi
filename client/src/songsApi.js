@@ -21,12 +21,33 @@ function getSongUrl(songBookId, songId) {
     return `${getSongsUrl(songBookId)}/${requireId(songId, "Song id")}`
 }
 
-export function getSongs(songBookId, page = 1) {
-    return request(pageUrl(getSongsUrl(songBookId), page))
+export function getSongs(
+    songBookId,
+    page = 1,
+    { search, signal } = {}
+) {
+    const trimmedSearch = typeof search === "string"
+        ? search.trim()
+        : ""
+    const params = trimmedSearch === ""
+        ? {}
+        : { search: trimmedSearch }
+
+    return request(
+        pageUrl(getSongsUrl(songBookId), page, params),
+        { signal }
+    )
 }
 
 export function getSong(songBookId, songId, { signal } = {}) {
     return request(getSongUrl(songBookId, songId), { signal })
+}
+
+export function getAdjacentSongs(songBookId, songId, { signal } = {}) {
+    return request(
+        `${getSongUrl(songBookId, songId)}/adjacent`,
+        { signal }
+    )
 }
 
 export function createSong(songBookId, songPayload) {

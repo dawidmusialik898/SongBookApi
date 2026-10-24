@@ -4,6 +4,7 @@ import test from "node:test"
 import {
     createSong,
     deleteSong,
+    getAdjacentSongs,
     getSong,
     getSongs,
     updateSong
@@ -22,6 +23,7 @@ test("songsApi exports exactly the supported runtime API", async () => {
     assert.deepEqual(Object.keys(api).sort(), [
         "createSong",
         "deleteSong",
+        "getAdjacentSongs",
         "getSong",
         "getSongs",
         "updateSong"
@@ -141,6 +143,50 @@ test("endpoint wrappers map methods, encoded IDs, bodies, and responses", async 
             },
             method: "DELETE",
             url: `${SONGS_API_URL}/song%20%2F%20one`
+        }
+    ])
+})
+
+test("song-list search is trimmed and GET signals pass through", async () => {
+    const calls = []
+    const originalFetch = globalThis.fetch
+    const signal = new AbortController().signal
+    globalThis.fetch = async (url, options = {}) => {
+        calls.push({
+            signal: options.signal,
+            url: String(url)
+        })
+        return jsonResponse({})
+    }
+
+    try {
+        await getSongs("book", 2, {
+            search: "  Łódź & Kraków  ",
+            signal
+        })
+        await getSongs("book", 1, { search: " \t " })
+        await getAdjacentSongs("book / one", "song / one", { signal })
+        await getSong("book / one", "song / one", { signal })
+    } finally {
+        globalThis.fetch = originalFetch
+    }
+
+    assert.deepEqual(calls, [
+        {
+            signal,
+            url: "/songbooks/book/songs?page=2&search=%C5%81%C3%B3d%C5%BA+%26+Krak%C3%B3w"
+        },
+        {
+            signal: undefined,
+            url: "/songbooks/book/songs"
+        },
+        {
+            signal,
+            url: "/songbooks/book%20%2F%20one/songs/song%20%2F%20one/adjacent"
+        },
+        {
+            signal,
+            url: "/songbooks/book%20%2F%20one/songs/song%20%2F%20one"
         }
     ])
 })

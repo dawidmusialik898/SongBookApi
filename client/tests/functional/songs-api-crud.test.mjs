@@ -12,118 +12,18 @@ import {
     ApiError,
     resetAntiforgeryToken
 } from "../../src/httpClient.js"
-import { createFetchResponse } from "../helpers/testBrowser.mjs"
+import { createFakeApi } from "../helpers/fakeApi.mjs"
+import { installAppBrowser } from "../helpers/testBrowser.mjs"
 
 test("songs API adapter completes the five-endpoint CRUD workflow", async () => {
-    const songs = new Map()
-    const songBookId = "book / one"
-    let nextId = 1
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = async (url, options = {}) => {
-        const method = options.method ?? "GET"
-        const parsedUrl = new URL(url, "https://localhost/")
-
-        if (parsedUrl.pathname === "/auth/antiforgery") {
-            return createFetchResponse({
-                body: { token: "functional-csrf-token" }
-            })
-        }
-
-        const segments = parsedUrl.pathname
-            .split("/")
-            .filter(Boolean)
-            .map(decodeURIComponent)
-        assert.deepEqual(segments.slice(0, 3), [
-            "songbooks",
-            songBookId,
-            "songs"
-        ])
-        const idSegment = segments[3]
-        const id = idSegment === undefined
-            ? null
-            : decodeURIComponent(idSegment)
-
-        if (id === null && method === "GET") {
-            return createFetchResponse({
-                body: {
-                    items: [...songs.values()],
-                    page: 1,
-                    hasNext: false
-                }
-            })
-        }
-
-        if (id === null && method === "POST") {
-            const createdSong = {
-                id: `song-${nextId}`,
-                ...JSON.parse(options.body)
-            }
-            nextId += 1
-            songs.set(createdSong.id, createdSong)
-            return createFetchResponse({
-                body: createdSong,
-                status: 201
-            })
-        }
-
-        if (id !== null && method === "GET") {
-            if (!songs.has(id)) {
-                return createFetchResponse({
-                    body: {
-                        message: "Song not found"
-                    },
-                    status: 404
-                })
-            }
-
-            return createFetchResponse({
-                body: songs.get(id)
-            })
-        }
-
-        if (id !== null && method === "PUT") {
-            if (!songs.has(id)) {
-                return createFetchResponse({
-                    body: {
-                        message: "Song not found"
-                    },
-                    status: 404
-                })
-            }
-
-            songs.set(id, {
-                id,
-                ...JSON.parse(options.body)
-            })
-            return createFetchResponse({
-                body: null,
-                status: 204
-            })
-        }
-
-        if (id !== null && method === "DELETE") {
-            if (!songs.delete(id)) {
-                return createFetchResponse({
-                    body: {
-                        message: "Song not found"
-                    },
-                    status: 404
-                })
-            }
-
-            return createFetchResponse({
-                body: null,
-                status: 204
-            })
-        }
-
-        return createFetchResponse({
-            body: {
-                message: "Method not allowed"
-            },
-            status: 405
-        })
-    }
+    const api = createFakeApi()
+    api.seed.account("editor@example.com")
+    const songBookId = api.seed.book({
+        owner: "editor@example.com",
+        name: "Adapter songs"
+    })
+    api.signIn("editor@example.com")
+    const browser = installAppBrowser({ api })
 
     const createPayload = {
         title: "Adapter song",
@@ -140,7 +40,12 @@ test("songs API adapter completes the five-endpoint CRUD workflow", async () => 
         const createdSong = await createSong(songBookId, createPayload)
         assert.equal(createdSong.id, "song-1")
         assert.deepEqual(await getSongs(songBookId), {
-            items: [createdSong],
+            items: [createdSong].map(({ id, title, author, number }) => ({
+                id,
+                title,
+                author,
+                number
+            })),
             page: 1,
             hasNext: false
         })
@@ -182,6 +87,7 @@ test("songs API adapter completes the five-endpoint CRUD workflow", async () => 
             }
         )
     } finally {
-        globalThis.fetch = originalFetch
+        browser.restore()
+        resetAntiforgeryToken()
     }
 })

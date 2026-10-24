@@ -30,8 +30,8 @@ function getSongBookPdfsUrl(songBookId) {
     return `${getSongBookUrl(songBookId)}/pdfs`
 }
 
-export function getSongBooks(page = 1) {
-    return request(pageUrl(SONG_BOOKS_API_URL, page))
+export function getSongBooks(page = 1, { signal } = {}) {
+    return request(pageUrl(SONG_BOOKS_API_URL, page), { signal })
 }
 
 export function createSongBook(payload) {
@@ -41,8 +41,8 @@ export function createSongBook(payload) {
     })
 }
 
-export function getSongBook(songBookId) {
-    return request(getSongBookUrl(songBookId))
+export function getSongBook(songBookId, { signal } = {}) {
+    return request(getSongBookUrl(songBookId), { signal })
 }
 
 export function renameSongBook(songBookId, payload) {
@@ -58,8 +58,15 @@ export function deleteSongBook(songBookId) {
     })
 }
 
-export function getSongBookAccess(songBookId, page = 1) {
-    return request(pageUrl(getSongBookAccessUrl(songBookId), page))
+export function getSongBookAccess(
+    songBookId,
+    page = 1,
+    { signal } = {}
+) {
+    return request(
+        pageUrl(getSongBookAccessUrl(songBookId), page),
+        { signal }
+    )
 }
 
 export function setSongBookAccess(songBookId, payload) {
@@ -79,8 +86,15 @@ export function removeSongBookAccess(songBookId, accessId) {
     )
 }
 
-export function getSongBookPdfs(songBookId, page = 1) {
-    return request(pageUrl(getSongBookPdfsUrl(songBookId), page))
+export function getSongBookPdfs(
+    songBookId,
+    page = 1,
+    { signal } = {}
+) {
+    return request(
+        pageUrl(getSongBookPdfsUrl(songBookId), page),
+        { signal }
+    )
 }
 
 export function createSongBookPdf(

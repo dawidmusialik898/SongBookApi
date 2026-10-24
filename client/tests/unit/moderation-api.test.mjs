@@ -90,3 +90,33 @@ test("user-management adapter rejects blank IDs", () => {
         /User id must not be blank/
     )
 })
+
+test("managed-user GET passes its AbortSignal through", async () => {
+    const originalFetch = globalThis.fetch
+    const signal = new AbortController().signal
+    let call
+    globalThis.fetch = async (url, options = {}) => {
+        call = {
+            signal: options.signal,
+            url: String(url)
+        }
+        return new Response(JSON.stringify({
+            items: [],
+            page: 1,
+            hasNext: false
+        }), {
+            headers: { "Content-Type": "application/json" }
+        })
+    }
+
+    try {
+        await getManagedUsers(2, { signal })
+    } finally {
+        globalThis.fetch = originalFetch
+    }
+
+    assert.deepEqual(call, {
+        signal,
+        url: "/admin/users?page=2"
+    })
+})

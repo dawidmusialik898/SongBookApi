@@ -20,7 +20,7 @@ Update this table at the end of every phase.
 | 0 | Baseline and branch | Complete | 20937a4 | Branch already existed and was checked out; server 79/79, client 99/99. |
 | 1 | Server: song search and adjacent songs | Complete | 2fc8752 | Server 99/99, client 99/99; seeded route checks pass. |
 | 2 | Test infrastructure and API modules | Complete | 6d3ffe4 | Client 115/115; server 99/99. Legacy UI tests still pass. |
-| 3 | App shell, router, auth, library | Not started | | |
+| 3 | App shell, router, auth, library | Complete | b97613c | Client 78/78; server 99/99; Chrome smoke passed for auth, confirmation, book creation, Back/Forward, sign-out, and reset links. Legacy `main.js`: 7d41250. |
 | 4 | Book and song screens | Not started | | |
 | 5 | Song editor with inline chords | Not started | | |
 | 6 | PDF and share screens | Not started | | |
@@ -1528,21 +1528,21 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 3: App shell, router, auth, library
 
-- [ ] New `index.html` shell (7.2); keep `<head>`.
-- [ ] `main.js` bootstrap, `app.js`, `router.js`, `session.js`, and the
+- [x] New `index.html` shell (7.2); keep `<head>`.
+- [x] `main.js` bootstrap, `app.js`, `router.js`, `session.js`, and the
       `ui/` modules `dom`, `shell`, `status`, `dialog`, `menu`, `pagedList`,
       `errors`, and `format`.
-- [ ] Screens: `systemScreens` (loading, unavailable), `authScreen`,
+- [x] Screens: `systemScreens` (loading, unavailable), `authScreen`,
       `libraryScreen`, `notFoundScreen`. Book and song routes render Not found
       until Phase 4.
-- [ ] Base CSS: tokens, app bar, screen layout, row lists, dialog, menu,
+- [x] Base CSS: tokens, app bar, screen layout, row lists, dialog, menu,
       status, auth card.
-- [ ] Delete the old UI: the old `main.js` body, `songForm.js`, every old UI
+- [x] Delete the old UI: the old `main.js` body, `songForm.js`, every old UI
       test listed in 9.4, the legacy `installTestBrowser`, and old CSS
       selectors for removed panels. Migrate `unit/chords.test.mjs` to
       `installAppBrowser`.
-- [ ] Add the `window.confirm` ban to `unit/client-security.test.mjs` (9.4).
-- [ ] New tests: `unit/html-shell`, `unit/router`, `unit/errors`,
+- [x] Add the `window.confirm` ban to `unit/client-security.test.mjs` (9.4).
+- [x] New tests: `unit/html-shell`, `unit/router`, `unit/errors`,
       `unit/ui-components`, `unit/paged-list`, `integration/app-start`,
       `integration/auth-screen`, `integration/shell`,
       `integration/session-expiry` (non-editor cases),

@@ -38,7 +38,11 @@ public class TestApplicationFactory : WebApplicationFactory<Program>
     internal TestApplicationFactory(string databasePath, string? bootstrapSuperUserEmail = null)
     {
         _connectionString =
-            new SqliteConnectionStringBuilder { DataSource = databasePath }
+            new SqliteConnectionStringBuilder
+            {
+                DataSource = databasePath,
+                Pooling = false
+            }
                 .ConnectionString;
         _bootstrapSuperUserEmail = bootstrapSuperUserEmail;
     }

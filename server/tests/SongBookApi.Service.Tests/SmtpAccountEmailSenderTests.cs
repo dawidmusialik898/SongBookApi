@@ -115,13 +115,25 @@ public sealed class SmtpAccountEmailSenderTests
                     StringComparison.OrdinalIgnoreCase)
         });
 
-        if (passwordReset)
+        try
         {
-            await sender.SendPasswordResetLinkAsync("registered@example.test", link);
+            if (passwordReset)
+            {
+                await sender.SendPasswordResetLinkAsync("registered@example.test", link);
+            }
+            else
+            {
+                await sender.SendConfirmationLinkAsync("registered@example.test", link);
+            }
         }
-        else
+        catch
         {
-            await sender.SendConfirmationLinkAsync("registered@example.test", link);
+            if (server.ReceivedMessage.IsFaulted)
+            {
+                await server.ReceivedMessage;
+            }
+
+            throw;
         }
 
         MimeMessage message = await server.ReceivedMessage;
@@ -151,19 +163,25 @@ public sealed class SmtpAccountEmailSenderTests
     private sealed class RecordingSmtpServer : IDisposable
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-        private readonly RSA _key = RSA.Create(2048);
+        private readonly RSA _key;
         private readonly X509Certificate2 _certificate;
         private readonly CancellationTokenSource _timeout = new(TimeSpan.FromSeconds(20));
 
         public RecordingSmtpServer()
         {
+            _key = CreateServerKey();
             CertificateRequest request = new(
                 "CN=localhost",
                 _key,
                 HashAlgorithmName.SHA256,
                 RSASignaturePadding.Pkcs1);
             request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-            request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, false));
+            request.CertificateExtensions.Add(new X509KeyUsageExtension(
+                X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
+                false));
+            OidCollection enhancedKeyUsages = new();
+            enhancedKeyUsages.Add(new Oid("1.3.6.1.5.5.7.3.1"));
+            request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(enhancedKeyUsages, false));
             SubjectAlternativeNameBuilder alternativeNames = new();
             alternativeNames.AddIpAddress(IPAddress.Loopback);
             request.CertificateExtensions.Add(alternativeNames.Build());
@@ -185,6 +203,11 @@ public sealed class SmtpAccountEmailSenderTests
             _timeout.Cancel();
             _listener.Stop();
             _certificate.Dispose();
+            if (_key is RSACng cngKey)
+            {
+                cngKey.Key.Delete();
+            }
+
             _key.Dispose();
             _timeout.Dispose();
         }
@@ -262,6 +285,17 @@ public sealed class SmtpAccountEmailSenderTests
 
         private static StreamReader CreateReader(Stream stream) =>
             new(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
+
+        private static RSA CreateServerKey()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return RSA.Create(2048);
+            }
+
+            CngKey key = CngKey.Create(CngAlgorithm.Rsa, $"songbook-smtp-{Guid.NewGuid():N}");
+            return new RSACng(key);
+        }
 
         private static StreamWriter CreateWriter(Stream stream) =>
             new(stream, Encoding.ASCII, 1024, leaveOpen: true)

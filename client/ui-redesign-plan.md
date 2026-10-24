@@ -17,7 +17,7 @@ Update this table at the end of every phase.
 
 | Phase | Scope | Status | Commit | Notes |
 | --- | --- | --- | --- | --- |
-| 0 | Baseline and branch | Not started | | |
+| 0 | Baseline and branch | Complete | | Branch already existed and was checked out; server 79/79, client 99/99. |
 | 1 | Server: song search and adjacent songs | Not started | | |
 | 2 | Test infrastructure and API modules | Not started | | |
 | 3 | App shell, router, auth, library | Not started | | |

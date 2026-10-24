@@ -81,7 +81,11 @@ public sealed class ProductionHostingTests
         Assert.False(File.Exists(factory.DatabasePath));
 
         DbContextOptions<SongBookDbContext> options = new DbContextOptionsBuilder<SongBookDbContext>()
-            .UseSqlite(new SqliteConnectionStringBuilder { DataSource = factory.DatabasePath }.ConnectionString)
+            .UseSqlite(new SqliteConnectionStringBuilder
+            {
+                DataSource = factory.DatabasePath,
+                Pooling = false
+            }.ConnectionString)
             .Options;
         using (SongBookDbContext dbContext = new(options))
         {
@@ -153,7 +157,7 @@ public sealed class ProductionHostingTests
         try
         {
             File.WriteAllText(Path.Combine(directory.FullName, "Email__Smtp__Password"),
-                "test-app-password\n");
+                "test-app-password");
             IConfiguration configuration = new ConfigurationBuilder()
                 .AddKeyPerFile(directory.FullName, optional: false)
                 .Build();
@@ -203,7 +207,8 @@ public sealed class ProductionHostingTests
             {
                 ["ConnectionStrings:SongBookConnection"] = new SqliteConnectionStringBuilder
                 {
-                    DataSource = DatabasePath
+                    DataSource = DatabasePath,
+                    Pooling = false
                 }.ConnectionString,
                 ["DataProtection:KeyDirectory"] = KeyDirectory,
                 ["Backup:SuccessMarkerPath"] = BackupMarkerPath,

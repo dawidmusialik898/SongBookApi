@@ -1,0 +1,155 @@
+@host = https://localhost:7152
+@email = owner@example.com
+@password = a password with twelve characters
+@bookId = replace-after-create
+@songId = replace-after-create
+@accessId = replace-after-grant
+
+### Obtain/refresh the antiforgery token. Copy `token` into csrf.
+GET {{host}}/auth/antiforgery
+
+> {%
+    client.global.set("csrf", response.body.token);
+%}
+
+### Register. Confirm through the link logged by the Development email sender.
+POST {{host}}/auth/register
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Login after confirmation.
+POST {{host}}/auth/login
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "rememberMe": false
+}
+
+### List accessible private books.
+GET {{host}}/songbooks
+
+### Next page of book summaries (50 per page).
+GET {{host}}/songbooks?page=2
+
+### Create a private book.
+POST {{host}}/songbooks
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "name": "Sunday Service"
+}
+
+### Get one accessible book.
+GET {{host}}/songbooks/{{bookId}}
+
+### Rename (owner/Admin only).
+PUT {{host}}/songbooks/{{bookId}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "name": "Sunday Service Songs"
+}
+
+### Grant or update a registered collaborator (owner/Admin only).
+PUT {{host}}/songbooks/{{bookId}}/access
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "email": "reader@example.com",
+  "accessLevel": "reader"
+}
+
+### List collaborators (owner/Admin only).
+GET {{host}}/songbooks/{{bookId}}/access
+
+### Next page of collaborators (owner/Admin only).
+GET {{host}}/songbooks/{{bookId}}/access?page=2
+
+### Remove collaborator (owner/Admin only).
+DELETE {{host}}/songbooks/{{bookId}}/access/{{accessId}}
+X-CSRF-TOKEN: {{csrf}}
+
+### List songs (Reader+).
+GET {{host}}/songbooks/{{bookId}}/songs
+
+### Next page of song summaries, without lyrics (Reader+).
+GET {{host}}/songbooks/{{bookId}}/songs?page=2
+
+### Create song (Editor+).
+POST {{host}}/songbooks/{{bookId}}/songs
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "title": "Amazing Grace",
+  "author": "John Newton",
+  "originalTitle": null,
+  "number": "1",
+  "key": "G",
+  "tempo": "Moderate",
+  "parts": [
+    {
+      "name": "Verse 1",
+      "text": "Amazing grace",
+      "chords": [
+        { "offset": 0, "symbol": "G" },
+        { "offset": 8, "symbol": "D7" }
+      ]
+    }
+  ]
+}
+
+### Get nested song (Reader+).
+GET {{host}}/songbooks/{{bookId}}/songs/{{songId}}
+
+### Update nested song; route IDs are authoritative (Editor+).
+PUT {{host}}/songbooks/{{bookId}}/songs/{{songId}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{
+  "title": "Amazing Grace",
+  "author": "John Newton",
+  "originalTitle": null,
+  "number": "1",
+  "key": "A",
+  "tempo": "Moderate",
+  "parts": [
+    {
+      "id": "replace-with-existing-part-id",
+      "name": "Verse 1",
+      "text": "Updated text",
+      "chords": []
+    },
+    {
+      "name": "Chorus",
+      "text": "New part"
+    }
+  ]
+}
+
+### Delete song (Editor+).
+DELETE {{host}}/songbooks/{{bookId}}/songs/{{songId}}
+X-CSRF-TOKEN: {{csrf}}
+
+### Delete book and all contained data (owner/Admin only).
+DELETE {{host}}/songbooks/{{bookId}}
+X-CSRF-TOKEN: {{csrf}}
+
+### Logout.
+POST {{host}}/auth/logout
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf}}
+
+{}

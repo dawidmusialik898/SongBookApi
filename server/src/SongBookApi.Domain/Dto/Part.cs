@@ -1,0 +1,14 @@
+namespace SongBookApi.Domain.Dto;
+
+public class Part
+{
+    public Guid Id { get; set; }
+    public Guid SongId { get; set; }
+    public int Position { get; set; }
+    public string? Name { get; set; } //verse, chorus, intro, outro etc.
+    public string? Text { get; set; }
+    // Null on an incoming update means that existing chords were not submitted.
+    public List<Chord>? Chords { get; set; } = [];
+
+    public Part() => Id = Guid.NewGuid();
+}

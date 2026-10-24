@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep the SongBook DuckDNS address current
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

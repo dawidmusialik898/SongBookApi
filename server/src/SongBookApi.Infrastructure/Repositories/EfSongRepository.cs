@@ -19,6 +19,20 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             .Select(song => new SongSummary(song.Id, song.Title, song.Author, song.Number))
             .ToListAsync(), page);
 
+    public async Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId) =>
+        await dbContext.Songs
+            .AsNoTracking()
+            .Where(song => song.SongBookId == songBookId)
+            .OrderBy(song => song.Title)
+            .ThenBy(song => song.Id)
+            .Select(song => new SongIndexEntry(
+                song.Id,
+                song.Title,
+                song.OriginalTitle,
+                song.Author,
+                song.Number))
+            .ToListAsync();
+
     public async Task<Song?> GetByIdAsync(Guid songBookId, Guid songId) =>
         await dbContext.Songs
             .AsNoTracking()

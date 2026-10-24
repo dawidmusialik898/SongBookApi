@@ -8,7 +8,9 @@ public interface ISongService
 {
     Task<Song> CreateSongAsync(Guid songBookId, Song song);
     Task<bool> DeleteSongAsync(Guid songBookId, Guid songId);
+    Task<PageResult<SongSummary>> SearchSongsPageAsync(Guid songBookId, string search, int page);
     Task<PageResult<SongSummary>> GetSongsPageAsync(Guid songBookId, int page);
+    Task<AdjacentSongs?> GetAdjacentSongsAsync(Guid songBookId, Guid songId);
     Task<Song?> GetSongByIdAsync(Guid songBookId, Guid songId);
     Task<bool> UpdateSongAsync(Guid songBookId, Guid songId, Song song);
 }
@@ -42,6 +44,45 @@ public class SongService : ISongService
         return await _songRepository.GetPageAsync(songBookId, page);
     }
 
+    public async Task<PageResult<SongSummary>> SearchSongsPageAsync(
+        Guid songBookId,
+        string search,
+        int page)
+    {
+        IReadOnlyList<string> tokens = SongSearch.Tokenize(search);
+        IReadOnlyList<SongIndexEntry> index = await _songRepository.GetIndexAsync(songBookId);
+        SongSummary[] matches = index
+            .Where(entry => SongSearch.Matches(entry, tokens))
+            .Skip(Paging.Offset(page))
+            .Take(Paging.Size + 1)
+            .Select(ToSummary)
+            .ToArray();
+        return Paging.FromLookahead(matches, page);
+    }
+
+    public async Task<AdjacentSongs?> GetAdjacentSongsAsync(Guid songBookId, Guid songId)
+    {
+        IReadOnlyList<SongIndexEntry> index = await _songRepository.GetIndexAsync(songBookId);
+        int position = -1;
+        for (int indexPosition = 0; indexPosition < index.Count; indexPosition++)
+        {
+            if (index[indexPosition].Id == songId)
+            {
+                position = indexPosition;
+                break;
+            }
+        }
+
+        if (position < 0)
+        {
+            return null;
+        }
+
+        return new AdjacentSongs(
+            position > 0 ? ToSummary(index[position - 1]) : null,
+            position + 1 < index.Count ? ToSummary(index[position + 1]) : null);
+    }
+
     public async Task<Song?> GetSongByIdAsync(Guid songBookId, Guid songId)
     {
         _logger.LogInformation("Getting song {SongId} from book {SongBookId}", songId, songBookId);
@@ -55,4 +96,7 @@ public class SongService : ISongService
         song.SongBookId = songBookId;
         return await _songRepository.UpdateAsync(songBookId, songId, song);
     }
+
+    private static SongSummary ToSummary(SongIndexEntry entry) =>
+        new(entry.Id, entry.Title, entry.Author, entry.Number);
 }

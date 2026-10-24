@@ -16,22 +16,31 @@ internal static class SongBookTestHelpers
             await response.Content.ReadFromJsonAsync<SongBookResponse>());
     }
 
-    public static async Task<SongResponse> CreateSongAsync(
+    public static Task<SongResponse> CreateSongAsync(
         HttpClient client,
         Guid bookId,
         string title = "Test song",
-        object[]? parts = null)
+        object[]? parts = null) =>
+        CreateSongWithFieldsAsync(
+            client,
+            bookId,
+            new
+            {
+                title,
+                author = "Test author",
+                parts = parts ?? []
+            });
+
+    public static async Task<SongResponse> CreateSongWithFieldsAsync(
+        HttpClient client,
+        Guid bookId,
+        object body)
     {
         using HttpResponseMessage response =
             await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
                 client,
                 $"/songbooks/{bookId}/songs",
-                new
-                {
-                    title,
-                    author = "Test author",
-                    parts = parts ?? []
-                });
+                body);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return Assert.IsType<SongResponse>(
             await response.Content.ReadFromJsonAsync<SongResponse>());

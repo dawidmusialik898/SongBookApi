@@ -182,14 +182,29 @@ Admin and cannot have an access entry.
 
 | Method | Path | Minimum access | Success |
 | --- | --- | --- | --- |
-| `GET` | `/songbooks/{bookId}/songs?page=N` | Reader | `200` paged song summaries |
+| `GET` | `/songbooks/{bookId}/songs?page=N&search=TEXT` | Reader | `200` paged song summaries |
 | `POST` | `/songbooks/{bookId}/songs` | Editor | `201` song |
 | `GET` | `/songbooks/{bookId}/songs/{songId}` | Reader | `200` song |
+| `GET` | `/songbooks/{bookId}/songs/{songId}/adjacent` | Reader | `200` previous/next summaries |
 | `PUT` | `/songbooks/{bookId}/songs/{songId}` | Editor | `204` |
 | `DELETE` | `/songbooks/{bookId}/songs/{songId}` | Editor | `204` |
 
 The former unscoped `/songs` routes do not exist. Route IDs are authoritative;
 the body never accepts `songBookId` and cannot redirect an update.
+
+The optional song-list `search` parameter is trimmed; an empty value returns
+the unfiltered list. After trimming, it accepts at most 100 characters; a
+longer value returns `400` with a validation error under `search`. Search is
+case- and diacritic-insensitive across title, original title, author, and
+number. It lower-cases invariantly, decomposes to Form D, removes
+nonspacing marks, maps `ł` to `l`, and collapses whitespace. Every
+space-delimited search token must be a substring of at least one of those
+folded fields; tokens can match different fields.
+
+The adjacent route returns the previous and next song summaries in the same
+canonical order as the song list and PDF exports. It returns `null` for a
+neighbor at either end and `404` when the song is not in the requested book
+or the caller cannot access the book.
 
 Create payload:
 
@@ -333,8 +348,21 @@ response shape (including on an empty page):
 `hasNext` indicates whether another page exists; an invalid or overflowing
 page returns `400`. Book pages are ordered by name and ID, song pages by title
 and ID, collaborator pages by email and access-entry ID, and user pages by
-email and ID. The client provides Previous/Next controls and returns to the
-previous page if a deletion empties the current one.
+email and ID. Song pages use SQLite's default BINARY collation for the
+`Title`, then `Id` order. Adjacent-song lookups and PDF exports use that same
+canonical song order; do not re-sort it in .NET.
+
+Song-list `search` is applied before paging and supports title, original
+title, author, and number. It folds text by invariant lower-casing, Form D
+decomposition, removing nonspacing marks, mapping `ł` to `l`, and collapsing
+whitespace. Every token must be a substring of at least one folded field,
+and tokens may match different fields. Search is case- and
+diacritic-insensitive, and is limited to 100 characters after trimming;
+longer values return `400` with a validation error under `search`. An empty
+or whitespace-only value is equivalent to an unfiltered list.
+
+The client provides Previous/Next controls and returns to the previous page
+if a deletion empties the current one.
 
 Song-list items contain only `id`, `title`, `author`, and `number`. Fetch
 `GET /songbooks/{bookId}/songs/{songId}` for the full song, including its

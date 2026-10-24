@@ -40,3 +40,7 @@ public sealed record SongSummaryResponse(
     string? Title,
     string? Author,
     string? Number);
+
+public sealed record AdjacentSongsResponse(
+    SongSummaryResponse? Previous,
+    SongSummaryResponse? Next);

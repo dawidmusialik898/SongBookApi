@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using SongBookApi.Domain;
+using DomainAdjacentSongs = SongBookApi.Domain.Dto.AdjacentSongs;
 using DomainSongSummary = SongBookApi.Domain.Dto.SongSummary;
 using DomainSong = SongBookApi.Domain.Dto.Song;
 using DomainPart = SongBookApi.Domain.Dto.Part;
@@ -18,6 +19,7 @@ public static class SongEndpoints
             .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy);
 
         songs.MapGet("", GetSongs);
+        songs.MapGet("/{songId:guid}/adjacent", GetAdjacentSongs);
         songs.MapGet("/{songId:guid}", GetSong);
         songs.MapPost("", CreateSong).AddEndpointFilter<AntiforgeryValidationFilter>();
         songs.MapPut("/{songId:guid}", UpdateSong).AddEndpointFilter<AntiforgeryValidationFilter>();
@@ -29,12 +31,23 @@ public static class SongEndpoints
         ClaimsPrincipal principal,
         ISongBookAccessService accessService,
         ISongService songService,
-        int page = 1)
+        int page = 1,
+        string? search = null)
     {
         IResult? invalidPage = EndpointHelpers.ValidatePage(page);
         if (invalidPage is not null)
         {
             return invalidPage;
+        }
+
+        string trimmedSearch = search?.Trim() ?? string.Empty;
+        if (trimmedSearch.Length > SongSearch.MaxLength)
+        {
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]>
+                {
+                    ["search"] = ["Search must contain at most 100 characters."]
+                });
         }
 
         IResult? denial = await RequireAccessAsync(
@@ -47,12 +60,38 @@ public static class SongEndpoints
             return denial;
         }
 
-        PageResult<DomainSongSummary> songs = await songService.GetSongsPageAsync(bookId, page);
+        PageResult<DomainSongSummary> songs = trimmedSearch.Length == 0
+            ? await songService.GetSongsPageAsync(bookId, page)
+            : await songService.SearchSongsPageAsync(bookId, trimmedSearch, page);
         return Results.Ok(new PageResult<SongSummaryResponse>(
-            songs.Items.Select(song => new SongSummaryResponse(
-                song.Id, song.Title, song.Author, song.Number)).ToArray(),
+            songs.Items.Select(ToSummaryResponse).ToArray(),
             songs.Page,
             songs.HasNext));
+    }
+
+    private static async Task<IResult> GetAdjacentSongs(
+        Guid bookId,
+        Guid songId,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService)
+    {
+        IResult? denial = await RequireAccessAsync(
+            bookId,
+            EndpointHelpers.GetUserId(principal),
+            accessService,
+            EffectiveSongBookAccess.Reader);
+        if (denial is not null)
+        {
+            return denial;
+        }
+
+        DomainAdjacentSongs? adjacent = await songService.GetAdjacentSongsAsync(bookId, songId);
+        return adjacent is null
+            ? Results.NotFound()
+            : Results.Ok(new AdjacentSongsResponse(
+                adjacent.Previous is null ? null : ToSummaryResponse(adjacent.Previous),
+                adjacent.Next is null ? null : ToSummaryResponse(adjacent.Next)));
     }
 
     private static async Task<IResult> GetSong(
@@ -290,4 +329,7 @@ public static class SongEndpoints
                         .Select(chord => new ChordResponse(chord.Offset, chord.Symbol))
                         .ToList() ?? []))
                 .ToList());
+
+    private static SongSummaryResponse ToSummaryResponse(DomainSongSummary song) =>
+        new(song.Id, song.Title, song.Author, song.Number);
 }

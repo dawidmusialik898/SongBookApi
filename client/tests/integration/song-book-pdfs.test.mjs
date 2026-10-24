@@ -105,7 +105,7 @@ test("readers and editors can list and download exports but cannot generate them
     assert.equal(downloadClicks.length, 2)
     assert.ok(downloadClicks.every(click =>
         click.href.startsWith("blob:") &&
-        click.name.endsWith("-stale-pdf.pdf")
+        click.name.endsWith("-lyrics-stale-pdf.pdf")
     ))
     assert.equal(
         browser.songBookRequests.filter(request =>

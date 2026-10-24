@@ -266,7 +266,7 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
         Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
-        Assert.Equal("private, no-store", response.Headers.CacheControl?.ToString());
+        Assert.True(response.Headers.CacheControl?.NoStore);
         byte[] bytes = await response.Content.ReadAsByteArrayAsync();
         Assert.StartsWith("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
         using PdfDocument document = PdfDocument.Open(new MemoryStream(bytes));

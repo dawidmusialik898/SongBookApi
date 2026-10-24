@@ -2488,6 +2488,7 @@ export async function downloadPdf(pdfId) {
     }
 
     const bookId = state.selectedSongBookId
+    const exported = state.songBookPdfs.find(pdf => pdf.id === pdfId)
     const requestId = ++pdfDownloadRequestId
     const requestAuthGeneration = authGeneration
     state.downloadingPdfId = pdfId
@@ -2522,7 +2523,7 @@ export async function downloadPdf(pdfId) {
         link.href = objectUrl
         link.download = pdfDownloadName(
             state.selectedSongBook.name,
-            pdfId
+            exported
         )
         try {
             document.body.appendChild(link)
@@ -2630,13 +2631,14 @@ function readPdfMetadata(pdf) {
     return pdf
 }
 
-function pdfDownloadName(bookName, pdfId) {
+function pdfDownloadName(bookName, pdf) {
     const safeBookName = displayValue(bookName, "song-book")
         .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
         .replace(/[. ]+$/g, "")
         .slice(0, 80) || "song-book"
-    const safeId = pdfId.replace(/[^\w-]/g, "_").slice(0, 64)
-    return `${safeBookName}-${safeId || "export"}.pdf`
+    const variant = pdf.includeChords ? "chords" : "lyrics"
+    const safeId = pdf.id.replace(/[^\w-]/g, "_").slice(0, 64)
+    return `${safeBookName}-${variant}-${safeId || "export"}.pdf`
 }
 
 export function renderSongBookList() {

@@ -26,4 +26,10 @@
     <InternalsVisibleTo Include="SongBookApi.Service.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Resources\Fonts\*.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\*.ttf" LogicalName="SongBookApi.Service.Fonts.%(Filename)%(Extension)" />
+    <None Update="Resources\Fonts\DejaVu-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -247,13 +247,19 @@ only the chord annotations table, leaving existing songs and parts intact.
 
 ## Saved PDF exports
 
-The selected book has an **Export PDFs** panel. Only its owner can generate
+The selected book has a **PDF exports** panel. Only its owner can generate
 a PDF of all songs or select individual songs (including songs beyond the
 current list page). The owner chooses lyrics-only or with-chords; both
 variants, and earlier generations, remain saved and downloadable. Any
 current Reader, Editor, or owner can view and download saved exports. A
 removed collaborator loses access to both the list and the download route
 immediately; a PDF is never exposed as a public static file.
+
+Chorded PDFs print each lyric line in a monospace font beneath one row of
+its chords. As in the song view, when chords sit closer together than their
+symbols are wide, the lyric spacing widens instead of the symbols
+overlapping; long lines wrap between words. A song, part, or chord row that
+would straddle a page break moves to the next page when it fits there.
 
 | Method | Path | Minimum access | Success |
 | --- | --- | --- | --- |
@@ -297,14 +303,18 @@ remain unchanged and are marked `isOutdated: true` if their saved revision
 differs from the current book. Changing collaborator permissions does not
 change PDF content or mark it outdated. Generated PDFs are stored as SQLite
 BLOBs under their book and removed when it is deleted; the existing SQLite
-backup/restore includes them. Downloads set `Cache-Control: private, no-store`
+backup/restore includes them. Downloads are sent with `Cache-Control: no-store`
 and use server-constructed attachment filenames.
 
 Apply the `StoreSongBookPdfs` migration before using this feature in
 Production. PDF rendering uses QuestPDF (Community licensing is free for
 eligible open-source/individual projects; other deployments must check its
-license terms) and requires the host's DejaVu Sans Mono font for chord
-alignment. See the deployment guide for the font package.
+license terms). Chorded lyrics use DejaVu Sans Mono, embedded in the service
+from `src/SongBookApi.Service/Resources/Fonts/` (its license is alongside and
+ships with the build); other text uses QuestPDF's bundled Lato. Output
+therefore does not depend on fonts installed on the host. Characters neither
+font covers, such as emoji or CJK text, print as placeholder glyphs instead of
+failing the export.
 
 ## Paged collections
 

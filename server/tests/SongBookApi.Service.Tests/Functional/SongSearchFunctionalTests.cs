@@ -86,7 +86,7 @@ public sealed class SongSearchFunctionalTests : IClassFixture<SongBookApiFactory
         using HttpResponseMessage tooLong = await other.GetAsync(
             SearchPath(book.Id, new string('x', 101)));
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
-        using JsonDocument problem =
+        using var problem =
             JsonDocument.Parse(await tooLong.Content.ReadAsStringAsync());
         Assert.True(problem.RootElement
             .GetProperty("errors")
@@ -115,6 +115,7 @@ public sealed class SongSearchFunctionalTests : IClassFixture<SongBookApiFactory
                     parts = Array.Empty<object>()
                 });
         }
+
         _ = await SongBookTestHelpers.CreateSongWithFieldsAsync(
             owner,
             book.Id,
@@ -160,10 +161,9 @@ public sealed class SongSearchFunctionalTests : IClassFixture<SongBookApiFactory
             await GetSongsPageAsync(owner, book.Id);
         PageResult<SongSummaryResponse> filtered =
             await GetSearchPageAsync(owner, book.Id, "needle");
-        Guid[] expected = unfiltered.Items
+        Guid[] expected = [.. unfiltered.Items
             .Where(item => item.Title?.Contains("needle", StringComparison.OrdinalIgnoreCase) == true)
-            .Select(item => item.Id)
-            .ToArray();
+            .Select(item => item.Id)];
 
         Assert.Equal(expected, filtered.Items.Select(item => item.Id));
     }
@@ -196,8 +196,8 @@ public sealed class SongSearchFunctionalTests : IClassFixture<SongBookApiFactory
     private static async Task<PageResult<SongSummaryResponse>> GetSongsPageAsync(
         HttpClient client,
         Guid bookId,
-        int page = 1) =>
-        Assert.IsType<PageResult<SongSummaryResponse>>(
+        int page = 1)
+        => Assert.IsType<PageResult<SongSummaryResponse>>(
             await client.GetFromJsonAsync<PageResult<SongSummaryResponse>>(
                 $"/songbooks/{bookId}/songs?page={page}"));
 
@@ -205,11 +205,11 @@ public sealed class SongSearchFunctionalTests : IClassFixture<SongBookApiFactory
         HttpClient client,
         Guid bookId,
         string search,
-        int page = 1) =>
-        Assert.IsType<PageResult<SongSummaryResponse>>(
+        int page = 1)
+        => Assert.IsType<PageResult<SongSummaryResponse>>(
             await client.GetFromJsonAsync<PageResult<SongSummaryResponse>>(
                 SearchPath(bookId, search, page)));
 
-    private static string SearchPath(Guid bookId, string search, int page = 1) =>
-        $"/songbooks/{bookId}/songs?search={Uri.EscapeDataString(search)}&page={page}";
+    private static string SearchPath(Guid bookId, string search, int page = 1)
+        => $"/songbooks/{bookId}/songs?search={Uri.EscapeDataString(search)}&page={page}";
 }

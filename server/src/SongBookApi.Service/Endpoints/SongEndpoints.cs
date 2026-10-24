@@ -131,6 +131,7 @@ public static class SongEndpoints
         {
             return denial;
         }
+
         if (request.Parts?.Any(part => part?.Id.HasValue == true) == true)
         {
             return Results.ValidationProblem(
@@ -222,10 +223,12 @@ public static class SongEndpoints
         {
             return Results.NotFound();
         }
+
         if (access < minimum)
         {
             return Results.Forbid();
         }
+
         return null;
     }
 
@@ -266,12 +269,14 @@ public static class SongEndpoints
                         $"{path}.offset",
                         "The chord offset must point to a lyric character, not a line break or part of a surrogate pair.");
                 }
+
                 if (!offsets.Add(offset.Value))
                 {
                     return ChordValidationError(
                         $"{path}.offset",
                         "Only one chord can be placed at each character.");
                 }
+
                 if (string.IsNullOrWhiteSpace(chord.Symbol) || chord.Symbol.Trim().Length > 64)
                 {
                     return ChordValidationError(
@@ -284,11 +289,11 @@ public static class SongEndpoints
         return null;
     }
 
-    private static IResult ChordValidationError(string path, string message) =>
-        Results.ValidationProblem(new Dictionary<string, string[]> { [path] = [message] });
+    private static IResult ChordValidationError(string path, string message)
+        => Results.ValidationProblem(new Dictionary<string, string[]> { [path] = [message] });
 
-    private static DomainSong ToDomain(SongRequest request, bool acceptPartIds) =>
-        new()
+    private static DomainSong ToDomain(SongRequest request, bool acceptPartIds)
+        => new()
         {
             Title = request.Title,
             Author = request.Author,
@@ -309,8 +314,8 @@ public static class SongEndpoints
             }).ToList() ?? []
         };
 
-    private static SongResponse ToResponse(DomainSong song) =>
-        new(
+    private static SongResponse ToResponse(DomainSong song)
+        => new(
             song.Id,
             song.Title,
             song.Author,
@@ -330,6 +335,6 @@ public static class SongEndpoints
                         .ToList() ?? []))
                 .ToList());
 
-    private static SongSummaryResponse ToSummaryResponse(DomainSongSummary song) =>
-        new(song.Id, song.Title, song.Author, song.Number);
+    private static SongSummaryResponse ToSummaryResponse(DomainSongSummary song)
+        => new(song.Id, song.Title, song.Author, song.Number);
 }

@@ -31,6 +31,7 @@ public static class SongBookPdfEndpoints
         {
             return denial;
         }
+
         IResult? invalidPage = EndpointHelpers.ValidatePage(page);
         if (invalidPage is not null)
         {
@@ -53,6 +54,7 @@ public static class SongBookPdfEndpoints
         {
             return denial;
         }
+
         if (!request.IncludeChords.HasValue)
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -93,6 +95,7 @@ public static class SongBookPdfEndpoints
         {
             return denial;
         }
+
         SongBookPdfDownload? pdf = await service.DownloadAsync(bookId, pdfId);
         if (pdf is null)
         {

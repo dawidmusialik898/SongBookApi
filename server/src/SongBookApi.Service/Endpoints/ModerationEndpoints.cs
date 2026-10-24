@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SongBookApi.Domain;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
@@ -48,7 +49,7 @@ public static class ModerationEndpoints
             .Select(user => new { user.Id, user.Email, user.IsBanned, user.EmailConfirmed })
             .ToListAsync();
         var visibleUsers = users.Take(Paging.Size).ToArray();
-        string[] userIds = visibleUsers.Select(user => user.Id).ToArray();
+        string[] userIds = [.. visibleUsers.Select(user => user.Id)];
         var assignments = await dbContext.UserRoles
             .Where(assignment => userIds.Contains(assignment.UserId))
             .Join(dbContext.Roles, assignment => assignment.RoleId,
@@ -97,12 +98,13 @@ public static class ModerationEndpoints
         {
             return ValidationProblem("role", "Only a confirmed, active account can become a moderator.");
         }
+
         if (isModerator == (request.Role == "moderator"))
         {
             return Results.NoContent();
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         EnsureSucceeded(request.Role == "moderator"
             ? await userManager.AddToRoleAsync(target!, AuthConstants.ModeratorRole)
             : await userManager.RemoveFromRoleAsync(target!, AuthConstants.ModeratorRole));
@@ -133,12 +135,13 @@ public static class ModerationEndpoints
         {
             return denial;
         }
+
         if (target!.IsBanned == request.IsBanned.Value)
         {
             return Results.NoContent();
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         target.IsBanned = request.IsBanned.Value;
         EnsureSucceeded(await userManager.UpdateAsync(target));
         EnsureSucceeded(await userManager.UpdateSecurityStampAsync(target));
@@ -163,7 +166,7 @@ public static class ModerationEndpoints
             return denial;
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         await dbContext.SongBooks
             .Where(book => book.OwnerId == target!.Id)
             .ExecuteDeleteAsync();
@@ -201,8 +204,8 @@ public static class ModerationEndpoints
         return (target, null);
     }
 
-    private static IResult ValidationProblem(string key, string error) =>
-        Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [error] });
+    private static IResult ValidationProblem(string key, string error)
+        => Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [error] });
 
     private static void EnsureSucceeded(IdentityResult result)
     {

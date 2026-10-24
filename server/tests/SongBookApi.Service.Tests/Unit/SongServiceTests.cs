@@ -12,8 +12,8 @@ public sealed class SongServiceTests
     [Fact]
     public async Task UpdateSongAsync_OverwritesBodyIdWithRouteId()
     {
-        Guid routeId = Guid.NewGuid();
-        Guid bodyId = Guid.NewGuid();
+        var routeId = Guid.NewGuid();
+        var bodyId = Guid.NewGuid();
         Song request = new()
         {
             Id = bodyId,
@@ -22,7 +22,7 @@ public sealed class SongServiceTests
         RecordingSongRepository repository = new();
         SongService service = new(repository, NullLogger<SongService>.Instance);
 
-        Guid bookId = Guid.NewGuid();
+        var bookId = Guid.NewGuid();
         bool updated = await service.UpdateSongAsync(bookId, routeId, request);
 
         Assert.True(updated);
@@ -54,16 +54,15 @@ public sealed class SongServiceTests
     [Fact]
     public async Task SearchSongsPageAsync_PaginatesAfterFilteringWithLookahead()
     {
-        SongIndexEntry[] index = Enumerable.Range(0, 55)
+        SongIndexEntry[] index = [.. Enumerable.Range(0, 55)
             .Select(index => new SongIndexEntry(
                 TestId(55 - index),
                 $"Needle {index:D2}",
                 null,
                 null,
-                null))
-            .ToArray();
+                null))];
         SongService service = CreateService(new IndexSongRepository(index));
-        Guid songBookId = Guid.NewGuid();
+        var songBookId = Guid.NewGuid();
 
         PageResult<SongSummary> first =
             await service.SearchSongsPageAsync(songBookId, "needle", 1);
@@ -88,7 +87,7 @@ public sealed class SongServiceTests
             new(TestId(2), "Last", null, null, null)
         ];
         SongService service = CreateService(new IndexSongRepository(index));
-        Guid songBookId = Guid.NewGuid();
+        var songBookId = Guid.NewGuid();
 
         for (int position = 0; position < index.Length; position++)
         {
@@ -110,7 +109,7 @@ public sealed class SongServiceTests
     {
         SongIndexEntry onlySong = new(TestId(1), "Only song", null, null, null);
         SongService service = CreateService(new IndexSongRepository([onlySong]));
-        Guid songBookId = Guid.NewGuid();
+        var songBookId = Guid.NewGuid();
 
         Assert.Equal(
             new AdjacentSongs(null, null),
@@ -122,17 +121,17 @@ public sealed class SongServiceTests
     {
         public Song UpdatedSong { get; private set; } = null!;
 
-        public Task<Song?> GetByIdAsync(Guid songBookId, Guid songId) =>
-            throw new NotSupportedException();
+        public Task<Song?> GetByIdAsync(Guid songBookId, Guid songId)
+            => throw new NotSupportedException();
 
-        public Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page) =>
-            throw new NotSupportedException();
+        public Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page)
+            => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId)
+            => throw new NotSupportedException();
 
-        public Task<Song> AddAsync(Guid songBookId, Song song) =>
-            throw new NotSupportedException();
+        public Task<Song> AddAsync(Guid songBookId, Song song)
+            => throw new NotSupportedException();
 
         public Task<bool> UpdateAsync(Guid songBookId, Guid songId, Song song)
         {
@@ -140,38 +139,38 @@ public sealed class SongServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<bool> DeleteAsync(Guid songBookId, Guid songId) =>
-            throw new NotSupportedException();
+        public Task<bool> DeleteAsync(Guid songBookId, Guid songId)
+            => throw new NotSupportedException();
     }
 
     private sealed class IndexSongRepository(IReadOnlyList<SongIndexEntry> index)
         : ISongRepository
     {
-        public Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId) =>
-            Task.FromResult(index);
+        public Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId)
+            => Task.FromResult(index);
 
-        public Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page) =>
-            throw new NotSupportedException();
+        public Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page)
+            => throw new NotSupportedException();
 
-        public Task<Song?> GetByIdAsync(Guid songBookId, Guid songId) =>
-            throw new NotSupportedException();
+        public Task<Song?> GetByIdAsync(Guid songBookId, Guid songId)
+            => throw new NotSupportedException();
 
-        public Task<Song> AddAsync(Guid songBookId, Song song) =>
-            throw new NotSupportedException();
+        public Task<Song> AddAsync(Guid songBookId, Song song)
+            => throw new NotSupportedException();
 
-        public Task<bool> UpdateAsync(Guid songBookId, Guid songId, Song song) =>
-            throw new NotSupportedException();
+        public Task<bool> UpdateAsync(Guid songBookId, Guid songId, Song song)
+            => throw new NotSupportedException();
 
-        public Task<bool> DeleteAsync(Guid songBookId, Guid songId) =>
-            throw new NotSupportedException();
+        public Task<bool> DeleteAsync(Guid songBookId, Guid songId)
+            => throw new NotSupportedException();
     }
 
-    private static SongService CreateService(ISongRepository repository) =>
-        new(repository, NullLogger<SongService>.Instance);
+    private static SongService CreateService(ISongRepository repository)
+        => new(repository, NullLogger<SongService>.Instance);
 
-    private static Guid TestId(int value) =>
-        Guid.Parse($"00000000-0000-0000-0000-{value:D12}");
+    private static Guid TestId(int value)
+        => Guid.Parse($"00000000-0000-0000-0000-{value:D12}");
 
-    private static SongSummary ToSummary(SongIndexEntry entry) =>
-        new(entry.Id, entry.Title, entry.Author, entry.Number);
+    private static SongSummary ToSummary(SongIndexEntry entry)
+        => new(entry.Id, entry.Title, entry.Author, entry.Number);
 }

@@ -65,7 +65,7 @@ public sealed class AdjacentSongsFunctionalTests : IClassFixture<SongBookApiFact
         using HttpResponseMessage single = await owner.GetAsync(
             AdjacentPath(firstBook.Id, onlySong.Id));
         Assert.Equal(HttpStatusCode.OK, single.StatusCode);
-        using JsonDocument adjacent = JsonDocument.Parse(
+        using var adjacent = JsonDocument.Parse(
             await single.Content.ReadAsStringAsync());
         Assert.Equal(JsonValueKind.Null,
             adjacent.RootElement.GetProperty("previous").ValueKind);
@@ -114,19 +114,19 @@ public sealed class AdjacentSongsFunctionalTests : IClassFixture<SongBookApiFact
     private static async Task<PageResult<SongSummaryResponse>> GetSongsPageAsync(
         HttpClient client,
         Guid bookId,
-        int page) =>
-        Assert.IsType<PageResult<SongSummaryResponse>>(
+        int page)
+        => Assert.IsType<PageResult<SongSummaryResponse>>(
             await client.GetFromJsonAsync<PageResult<SongSummaryResponse>>(
                 $"/songbooks/{bookId}/songs?page={page}"));
 
     private static async Task<AdjacentSongsResponse> GetAdjacentAsync(
         HttpClient client,
         Guid bookId,
-        Guid songId) =>
-        Assert.IsType<AdjacentSongsResponse>(
+        Guid songId)
+        => Assert.IsType<AdjacentSongsResponse>(
             await client.GetFromJsonAsync<AdjacentSongsResponse>(
                 AdjacentPath(bookId, songId)));
 
-    private static string AdjacentPath(Guid bookId, Guid songId) =>
-        $"/songbooks/{bookId}/songs/{songId}/adjacent";
+    private static string AdjacentPath(Guid bookId, Guid songId)
+        => $"/songbooks/{bookId}/songs/{songId}/adjacent";
 }

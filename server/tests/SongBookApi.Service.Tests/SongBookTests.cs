@@ -98,8 +98,8 @@ public sealed class SongBookTests : IClassFixture<TestApplicationFactory>
         Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/songs/{song.Id}")).StatusCode);
     }
 
-    private Task<HttpClient> CreateUserAsync(string prefix) =>
-        AuthenticationTestHelpers.CreateConfirmedClientAsync(
+    private Task<HttpClient> CreateUserAsync(string prefix)
+        => AuthenticationTestHelpers.CreateConfirmedClientAsync(
             _factory,
             $"{prefix}-{Guid.NewGuid():N}@example.test");
 }

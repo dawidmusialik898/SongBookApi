@@ -40,6 +40,7 @@ public sealed class SongBookPersistenceTests : IClassFixture<TestApplicationFact
             SongBookDbContext db = firstScope.ServiceProvider.GetRequiredService<SongBookDbContext>();
             Assert.True(await db.SongBooks.AnyAsync(candidate => candidate.Id == book.Id));
         }
+
         await using (AsyncServiceScope freshScope = _factory.Services.CreateAsyncScope())
         {
             SongBookDbContext db = freshScope.ServiceProvider.GetRequiredService<SongBookDbContext>();
@@ -80,7 +81,7 @@ public sealed class SongBookPersistenceTests : IClassFixture<TestApplicationFact
         ApplicationUser ownerUser = (await users.FindByEmailAsync(ownerEmail))!;
         ApplicationUser memberUser = (await users.FindByEmailAsync(memberEmail))!;
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        Guid firstBookId = Guid.NewGuid();
+        var firstBookId = Guid.NewGuid();
         db.SongBooks.Add(new SongBook
         {
             Id = firstBookId,
@@ -199,8 +200,8 @@ public sealed class SongBookPersistenceTests : IClassFixture<TestApplicationFact
         }
     }
 
-    private Task<HttpClient> CreateUserAsync(string prefix) =>
-        AuthenticationTestHelpers.CreateConfirmedClientAsync(
+    private Task<HttpClient> CreateUserAsync(string prefix)
+        => AuthenticationTestHelpers.CreateConfirmedClientAsync(
             _factory,
             $"{prefix}-{Guid.NewGuid():N}@example.test");
 

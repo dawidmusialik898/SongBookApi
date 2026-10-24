@@ -16,7 +16,7 @@ public sealed class SongAuthorizationTests : IClassFixture<TestApplicationFactor
     public async Task AnonymousPrivateRoutesReturnUnauthorized()
     {
         using HttpClient client = _factory.CreateSecureClient();
-        Guid bookId = Guid.NewGuid();
+        var bookId = Guid.NewGuid();
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/songbooks")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync($"/songbooks/{bookId}/songs")).StatusCode);

@@ -117,6 +117,7 @@ public static class AuthEndpoints
         {
             await ModerationBootstrap.PromoteConfirmedUserAsync(configuration, userManager);
         }
+
         return Results.Redirect(result.Succeeded
             ? "/?auth=confirmed"
             : "/?auth=confirmation-failed");
@@ -228,8 +229,8 @@ public static class AuthEndpoints
         return !string.IsNullOrWhiteSpace(email) && new EmailAddressAttribute().IsValid(email);
     }
 
-    private static string EncodeToken(string token) =>
-        WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+    private static string EncodeToken(string token)
+        => WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
     private static bool TryDecodeToken(string? encodedToken, out string token)
     {
@@ -252,12 +253,12 @@ public static class AuthEndpoints
 
     private static IResult IdentityValidationProblem(IdentityResult result)
     {
-        Dictionary<string, string[]> errors = result.Errors
+        var errors = result.Errors
             .GroupBy(error => error.Code)
             .ToDictionary(group => group.Key, group => group.Select(error => error.Description).ToArray());
         return Results.ValidationProblem(errors);
     }
 
-    private static IResult ValidationProblem(string key, string error) =>
-        Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [error] });
+    private static IResult ValidationProblem(string key, string error)
+        => Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [error] });
 }

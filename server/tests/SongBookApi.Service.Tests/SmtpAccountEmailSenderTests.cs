@@ -283,8 +283,8 @@ public sealed class SmtpAccountEmailSenderTests
             return MimeMessage.Load(messageStream);
         }
 
-        private static StreamReader CreateReader(Stream stream) =>
-            new(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
+        private static StreamReader CreateReader(Stream stream)
+            => new(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
 
         private static RSA CreateServerKey()
         {
@@ -293,12 +293,12 @@ public sealed class SmtpAccountEmailSenderTests
                 return RSA.Create(2048);
             }
 
-            CngKey key = CngKey.Create(CngAlgorithm.Rsa, $"songbook-smtp-{Guid.NewGuid():N}");
+            var key = CngKey.Create(CngAlgorithm.Rsa, $"songbook-smtp-{Guid.NewGuid():N}");
             return new RSACng(key);
         }
 
-        private static StreamWriter CreateWriter(Stream stream) =>
-            new(stream, Encoding.ASCII, 1024, leaveOpen: true)
+        private static StreamWriter CreateWriter(Stream stream)
+            => new(stream, Encoding.ASCII, 1024, leaveOpen: true)
             {
                 AutoFlush = true,
                 NewLine = "\r\n"

@@ -54,11 +54,11 @@ public sealed class SmtpAccountEmailSender : IAccountEmailSender
         }
     }
 
-    public Task SendConfirmationLinkAsync(string email, string link) =>
-        SendAsync(email, "Confirm your SongBook email", "Confirm your email address using this link:", link);
+    public Task SendConfirmationLinkAsync(string email, string link)
+        => SendAsync(email, "Confirm your SongBook email", "Confirm your email address using this link:", link);
 
-    public Task SendPasswordResetLinkAsync(string email, string link) =>
-        SendAsync(email, "Reset your SongBook password", "Reset your password using this link:", link);
+    public Task SendPasswordResetLinkAsync(string email, string link)
+        => SendAsync(email, "Reset your SongBook password", "Reset your password using this link:", link);
 
     private async Task SendAsync(string email, string subject, string introduction, string link)
     {
@@ -67,7 +67,7 @@ public sealed class SmtpAccountEmailSender : IAccountEmailSender
             throw new ArgumentException("A valid email address is required.", nameof(email));
         }
 
-        MailboxAddress recipient = MailboxAddress.Parse(email);
+        var recipient = MailboxAddress.Parse(email);
         if (!string.Equals(recipient.Address, email, StringComparison.Ordinal))
         {
             throw new ArgumentException("A single email address is required.", nameof(email));

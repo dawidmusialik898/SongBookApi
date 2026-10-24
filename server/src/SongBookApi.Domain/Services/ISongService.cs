@@ -51,12 +51,11 @@ public class SongService : ISongService
     {
         IReadOnlyList<string> tokens = SongSearch.Tokenize(search);
         IReadOnlyList<SongIndexEntry> index = await _songRepository.GetIndexAsync(songBookId);
-        SongSummary[] matches = index
+        SongSummary[] matches = [.. index
             .Where(entry => SongSearch.Matches(entry, tokens))
             .Skip(Paging.Offset(page))
             .Take(Paging.Size + 1)
-            .Select(ToSummary)
-            .ToArray();
+            .Select(ToSummary)];
         return Paging.FromLookahead(matches, page);
     }
 
@@ -97,6 +96,6 @@ public class SongService : ISongService
         return await _songRepository.UpdateAsync(songBookId, songId, song);
     }
 
-    private static SongSummary ToSummary(SongIndexEntry entry) =>
-        new(entry.Id, entry.Title, entry.Author, entry.Number);
+    private static SongSummary ToSummary(SongIndexEntry entry)
+        => new(entry.Id, entry.Title, entry.Author, entry.Number);
 }

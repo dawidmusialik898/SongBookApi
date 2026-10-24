@@ -42,7 +42,7 @@ public sealed class CollectionPagingTests
         Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
         string firstJson = await firstResponse.Content.ReadAsStringAsync();
         Assert.DoesNotContain("Private lyric", firstJson);
-        using JsonDocument firstPayload = JsonDocument.Parse(firstJson);
+        using var firstPayload = JsonDocument.Parse(firstJson);
         JsonElement root = firstPayload.RootElement;
         Assert.Equal(1, root.GetProperty("page").GetInt32());
         Assert.True(root.GetProperty("hasNext").GetBoolean());
@@ -102,7 +102,7 @@ public sealed class CollectionPagingTests
                 NormalizedName = $"BOOK {index:D3}",
                 OwnerId = ownerId
             }));
-            var members = Enumerable.Range(0, 51).Select(index =>
+            ApplicationUser[] members = [.. Enumerable.Range(0, 51).Select(index =>
             {
                 string email = $"member-{index:D3}-{book.Id:N}@example.test";
                 return new ApplicationUser
@@ -114,7 +114,7 @@ public sealed class CollectionPagingTests
                     NormalizedUserName = email.ToUpperInvariant(),
                     EmailConfirmed = true
                 };
-            }).ToArray();
+            })];
             db.Users.AddRange(members);
             db.SongBookAccessEntries.AddRange(members.Select(member => new SongBookAccess
             {
@@ -164,7 +164,7 @@ public sealed class CollectionPagingTests
         using (IServiceScope scope = factory.Services.CreateScope())
         {
             SongBookDbContext db = scope.ServiceProvider.GetRequiredService<SongBookDbContext>();
-            var members = Enumerable.Range(0, 51).Select(index =>
+            ApplicationUser[] members = [.. Enumerable.Range(0, 51).Select(index =>
             {
                 string email = $"user-{index:D3}-{Guid.NewGuid():N}@example.test";
                 return new ApplicationUser
@@ -176,7 +176,7 @@ public sealed class CollectionPagingTests
                     NormalizedUserName = email.ToUpperInvariant(),
                     EmailConfirmed = true
                 };
-            }).ToArray();
+            })];
             db.Users.AddRange(members);
             db.UserRoles.Add(new IdentityUserRole<string>
             {

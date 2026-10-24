@@ -35,14 +35,14 @@ internal static class SongBookPdfRenderer
     public static byte[] Render(
         SongBookPdfSnapshot snapshot,
         bool includeChords,
-        DateTimeOffset generatedAtUtc) =>
-        Compose(snapshot, includeChords, generatedAtUtc).GeneratePdf();
+        DateTimeOffset generatedAtUtc)
+        => Compose(snapshot, includeChords, generatedAtUtc).GeneratePdf();
 
     internal static IDocument Compose(
         SongBookPdfSnapshot snapshot,
         bool includeChords,
-        DateTimeOffset generatedAtUtc) =>
-        Document.Create(document =>
+        DateTimeOffset generatedAtUtc)
+        => Document.Create(document =>
         {
             document.Page(page =>
             {
@@ -59,6 +59,7 @@ internal static class SongBookPdfRenderer
                     {
                         body.Item().Text("No songs in this book.");
                     }
+
                     foreach (Song song in snapshot.Songs)
                     {
                         body.Item().PreventPageBreak().Column(section =>
@@ -93,7 +94,7 @@ internal static class SongBookPdfRenderer
             .Text(string.IsNullOrWhiteSpace(song.Number) ? title : $"{song.Number}. {title}")
             .Bold()
             .FontSize(15);
-        string[] details = new[]
+        string[] details = [.. new[]
             {
                 song.Author,
                 string.IsNullOrWhiteSpace(song.OriginalTitle) ? null : $"Original: {song.OriginalTitle}",
@@ -101,12 +102,12 @@ internal static class SongBookPdfRenderer
                 string.IsNullOrWhiteSpace(song.Tempo) ? null : $"Tempo: {song.Tempo}"
             }
             .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value!)
-            .ToArray();
+            .Select(value => value!)];
         if (details.Length != 0)
         {
             section.Item().Text(string.Join(" | ", details)).FontSize(9);
         }
+
         foreach (Part part in song.Parts.OrderBy(part => part.Position))
         {
             section.Item().PreventPageBreak().Column(block => ComposePart(block, part, includeChords));
@@ -120,6 +121,7 @@ internal static class SongBookPdfRenderer
         {
             block.Item().Text(part.Name).SemiBold();
         }
+
         if (part.Text is null)
         {
             return;
@@ -132,6 +134,7 @@ internal static class SongBookPdfRenderer
                 string lyrics = Printable(line.Text.Replace("\t", new string(' ', TabWidth)));
                 block.Item().Text(lyrics.Length == 0 ? " " : lyrics);
             }
+
             return;
         }
 
@@ -148,6 +151,7 @@ internal static class SongBookPdfRenderer
                         .FontColor(ChordColor)
                         .Bold();
                 }
+
                 pair.Item().Text(line.Lyrics.Length == 0 ? " " : line.Lyrics)
                     .FontFamily(MonospaceFont, TextFont)
                     .FontSize(ChordedFontSize);
@@ -175,6 +179,7 @@ internal static class SongBookPdfRenderer
                 {
                     columns.Add(line.Start + elements.ElementIndex + index, glyphs.Count);
                 }
+
                 if (glyph == "\t")
                 {
                     glyphs.AddRange(Enumerable.Repeat(" ", TabWidth));
@@ -185,18 +190,16 @@ internal static class SongBookPdfRenderer
                 }
             }
 
-            Chord[] lineChords = chords
+            Chord[] lineChords = [.. chords
                 .Where(chord => columns.ContainsKey(chord.Offset))
-                .OrderBy(chord => chord.Offset)
-                .ToArray();
+                .OrderBy(chord => chord.Offset)];
             placedOffsets.UnionWith(lineChords.Select(chord => chord.Offset));
-            PlacedChord[] anchors = lineChords
+            PlacedChord[] anchors = [.. lineChords
                 .GroupBy(chord => columns[chord.Offset])
                 .Select(group => new PlacedChord(
                     group.Key,
                     string.Join(" ", group.Select(chord => Printable(chord.Symbol)))))
-                .OrderBy(anchor => anchor.Column)
-                .ToArray();
+                .OrderBy(anchor => anchor.Column)];
 
             List<string> cells = [];
             List<PlacedChord> placed = [];
@@ -214,15 +217,19 @@ internal static class SongBookPdfRenderer
                     int missing = Width(anchor.Symbol) + 1 - (end - anchor.Column);
                     cells.AddRange(Enumerable.Repeat(" ", Math.Max(0, missing)));
                 }
+
                 next = end;
             }
+
             cells.AddRange(glyphs.GetRange(next, glyphs.Count - next));
             result.AddRange(Wrap(cells, placed));
         }
+
         if (chords.Any(chord => !placedOffsets.Contains(chord.Offset)))
         {
             throw new InvalidDataException("A saved chord has no lyric character at its offset.");
         }
+
         return result;
     }
 
@@ -247,6 +254,7 @@ internal static class SongBookPdfRenderer
                     break;
                 }
             }
+
             if (end < cells.Count)
             {
                 int wordEnd = end;
@@ -254,6 +262,7 @@ internal static class SongBookPdfRenderer
                 {
                     wordEnd--;
                 }
+
                 if (wordEnd > start)
                 {
                     end = wordEnd;
@@ -280,20 +289,23 @@ internal static class SongBookPdfRenderer
             {
                 continue;
             }
+
             lines.Add(new LyricLine(start, text[start..index]));
             if (text[index] == '\r' && index + 1 < text.Length && text[index + 1] == '\n')
             {
                 index++;
             }
+
             start = index + 1;
         }
+
         lines.Add(new LyricLine(start, text[start..]));
         return lines;
     }
 
     // Control and separator characters would start new text lines and break chord alignment.
-    private static string Printable(string value) =>
-        string.Create(value.Length, value, (buffer, source) =>
+    private static string Printable(string value)
+        => string.Create(value.Length, value, (buffer, source) =>
         {
             for (int index = 0; index < source.Length; index++)
             {
@@ -322,6 +334,7 @@ internal static class SongBookPdfRenderer
                     text.Append(chord.Symbol);
                     column = Math.Max(column, chord.Column) + Width(chord.Symbol);
                 }
+
                 return text.ToString();
             }
         }

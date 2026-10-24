@@ -89,8 +89,8 @@ public sealed class SongBookAuthorizationTests : IClassFixture<TestApplicationFa
         Assert.Equal("Renamed by admin", renamed?.Name);
     }
 
-    private Task<HttpClient> CreateUserAsync(string prefix) =>
-        AuthenticationTestHelpers.CreateConfirmedClientAsync(
+    private Task<HttpClient> CreateUserAsync(string prefix)
+        => AuthenticationTestHelpers.CreateConfirmedClientAsync(
             _factory,
             $"{prefix}-{Guid.NewGuid():N}@example.test");
 }

@@ -78,8 +78,8 @@ public sealed class SongBookService(
         }
     }
 
-    public async Task DeleteAsync(Guid bookId, string ownerId) =>
-        await repository.DeleteAsync(await GetOwnedBookAsync(bookId, ownerId));
+    public async Task DeleteAsync(Guid bookId, string ownerId)
+        => await repository.DeleteAsync(await GetOwnedBookAsync(bookId, ownerId));
 
     public async Task<PageResult<SongBookMember>> ListMembersAsync(Guid bookId, string ownerId, int page)
     {
@@ -105,6 +105,7 @@ public sealed class SongBookService(
         {
             return null;
         }
+
         if (user.Id == book.OwnerId)
         {
             throw new ValidationException("The song-book owner cannot be added as a collaborator.");
@@ -132,10 +133,12 @@ public sealed class SongBookService(
         {
             throw new KeyNotFoundException();
         }
+
         if (book.OwnerId != ownerId)
         {
             throw new UnauthorizedAccessException();
         }
+
         return book;
     }
 
@@ -146,6 +149,7 @@ public sealed class SongBookService(
         {
             throw new ValidationException("Name must contain between 1 and 100 characters.");
         }
+
         return (trimmed, trimmed.ToUpperInvariant());
     }
 
@@ -156,18 +160,19 @@ public sealed class SongBookService(
         {
             throw new ValidationException("A valid registered email is required.");
         }
+
         return trimmed;
     }
 
     private static bool IsUniqueConstraintViolation(
-        DbUpdateException exception) =>
-        exception.InnerException is SqliteException
+        DbUpdateException exception)
+        => exception.InnerException is SqliteException
         {
             SqliteExtendedErrorCode: 2067
         };
 
-    private static SongBookSummary ToSummary(AccessibleSongBook book) =>
-        new(
+    private static SongBookSummary ToSummary(AccessibleSongBook book)
+        => new(
             book.Id,
             book.Name,
             book.AccessLevel switch

@@ -23,14 +23,10 @@ public sealed class SongBookPdfRendererTests
             ]
         };
 
-        using PdfDocument document = PdfDocument.Open(Render(part, includeChords: true));
-        Word[] words = document.GetPage(1).GetWords().ToArray();
-        Letter[] chords = new[] { "G", "C", "D7" }
-            .Select(symbol => words.Single(word => word.Text == symbol).Letters[0])
-            .ToArray();
-        Letter[] anchors = new[] { "Amazing", "grace", "how" }
-            .Select(lyric => words.Single(word => word.Text == lyric).Letters[0])
-            .ToArray();
+        using var document = PdfDocument.Open(Render(part, includeChords: true));
+        Word[] words = [.. document.GetPage(1).GetWords()];
+        Letter[] chords = [.. new[] { "G", "C", "D7" }.Select(symbol => words.Single(word => word.Text == symbol).Letters[0])];
+        Letter[] anchors = [.. new[] { "Amazing", "grace", "how" }.Select(lyric => words.Single(word => word.Text == lyric).Letters[0])];
         foreach ((Letter chord, Letter anchor) in chords.Zip(anchors))
         {
             Assert.Equal(chords[0].StartBaseLine.Y, chord.StartBaseLine.Y, 0.01);
@@ -136,7 +132,7 @@ public sealed class SongBookPdfRendererTests
         Assert.Equal("C D       B♭", line.ChordText);
         foreach (bool includeChords in new[] { true, false })
         {
-            using PdfDocument document = PdfDocument.Open(Render(part, includeChords));
+            using var document = PdfDocument.Open(Render(part, includeChords));
             string text = ContentOrderTextExtractor.GetText(document.GetPage(1));
             Assert.Contains("Zażółć", text);
             Assert.Contains("gęślą", text);

@@ -12,7 +12,7 @@ public sealed class PartJsonContractTests
     [Fact]
     public void Deserialize_WithExistingId_RestoresId()
     {
-        Guid existingId = Guid.NewGuid();
+        var existingId = Guid.NewGuid();
         string json =
             $$"""{"id":"{{existingId}}","name":"Verse 1","text":"Existing text"}""";
 

@@ -106,8 +106,8 @@ public class TestApplicationFactory : WebApplicationFactory<Program>
 
 internal sealed class FixedRemoteIpStartupFilter : IStartupFilter
 {
-    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
-        app =>
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+        => app =>
         {
             app.Use(async (context, continuation) =>
             {

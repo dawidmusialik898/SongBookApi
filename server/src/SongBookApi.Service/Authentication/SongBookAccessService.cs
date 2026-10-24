@@ -26,6 +26,7 @@ public sealed class SongBookAccessService(SongBookDbContext dbContext) : ISongBo
         {
             return EffectiveSongBookAccess.None;
         }
+
         if (access.IsOwner)
         {
             return EffectiveSongBookAccess.Admin;

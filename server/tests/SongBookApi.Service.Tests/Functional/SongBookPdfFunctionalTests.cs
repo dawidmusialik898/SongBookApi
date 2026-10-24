@@ -103,6 +103,7 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
                     client, listUrl, new { includeChords = true });
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         }
+
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.GetAsync(listUrl)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.GetAsync(fileUrl)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(listUrl)).StatusCode);
@@ -189,6 +190,7 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
                 await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(owner, url, invalid);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
+
         using HttpResponseMessage noToken =
             await owner.PostAsJsonAsync(url, new { includeChords = false });
         Assert.Equal(HttpStatusCode.BadRequest, noToken.StatusCode);
@@ -241,8 +243,8 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
         Assert.False(await checkDb.SongBookPdfs.AnyAsync(pdf => pdf.SongBookId == book.Id));
     }
 
-    private async Task<HttpClient> CreateUserAsync(string prefix) =>
-        await AuthenticationTestHelpers.CreateConfirmedClientAsync(_factory, Email(prefix));
+    private async Task<HttpClient> CreateUserAsync(string prefix)
+        => await AuthenticationTestHelpers.CreateConfirmedClientAsync(_factory, Email(prefix));
 
     private static string Email(string prefix) => $"{prefix}-{Guid.NewGuid():N}@example.test";
 
@@ -255,8 +257,8 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
             await response.Content.ReadFromJsonAsync<SongBookPdfInfo>());
     }
 
-    private static async Task<PageResult<SongBookPdfInfo>> ListAsync(HttpClient client, Guid bookId) =>
-        Assert.IsType<PageResult<SongBookPdfInfo>>(
+    private static async Task<PageResult<SongBookPdfInfo>> ListAsync(HttpClient client, Guid bookId)
+        => Assert.IsType<PageResult<SongBookPdfInfo>>(
             await client.GetFromJsonAsync<PageResult<SongBookPdfInfo>>($"/songbooks/{bookId}/pdfs"));
 
     private static async Task<string> DownloadTextAsync(HttpClient client, Guid bookId, Guid pdfId)
@@ -269,7 +271,7 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
         Assert.True(response.Headers.CacheControl?.NoStore);
         byte[] bytes = await response.Content.ReadAsByteArrayAsync();
         Assert.StartsWith("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
-        using PdfDocument document = PdfDocument.Open(new MemoryStream(bytes));
+        using var document = PdfDocument.Open(new MemoryStream(bytes));
         return string.Join("\n", document.GetPages().Select(page =>
             ContentOrderTextExtractor.GetText(page)));
     }

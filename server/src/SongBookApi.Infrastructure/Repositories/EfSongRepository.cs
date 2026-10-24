@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SongBookApi.Domain;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Repositories;
@@ -8,8 +9,8 @@ namespace SongBookApi.Infrastructure.Repositories;
 
 public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongRepository
 {
-    public async Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page) =>
-        Paging.FromLookahead(await dbContext.Songs
+    public async Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page)
+        => Paging.FromLookahead(await dbContext.Songs
             .AsNoTracking()
             .Where(song => song.SongBookId == songBookId)
             .OrderBy(song => song.Title)
@@ -19,8 +20,8 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             .Select(song => new SongSummary(song.Id, song.Title, song.Author, song.Number))
             .ToListAsync(), page);
 
-    public async Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId) =>
-        await dbContext.Songs
+    public async Task<IReadOnlyList<SongIndexEntry>> GetIndexAsync(Guid songBookId)
+        => await dbContext.Songs
             .AsNoTracking()
             .Where(song => song.SongBookId == songBookId)
             .OrderBy(song => song.Title)
@@ -33,8 +34,8 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
                 song.Number))
             .ToListAsync();
 
-    public async Task<Song?> GetByIdAsync(Guid songBookId, Guid songId) =>
-        await dbContext.Songs
+    public async Task<Song?> GetByIdAsync(Guid songBookId, Guid songId)
+        => await dbContext.Songs
             .AsNoTracking()
             .Where(song => song.SongBookId == songBookId && song.Id == songId)
             .Include(song => song.Parts.OrderBy(part => part.Position))
@@ -43,7 +44,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
 
     public async Task<Song> AddAsync(Guid songBookId, Song song)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         DateTimeOffset now = DateTimeOffset.UtcNow;
         song.Id = song.Id == Guid.Empty ? Guid.NewGuid() : song.Id;
         song.SongBookId = songBookId;
@@ -81,7 +82,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             return false;
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         int currentMaximum = song.Parts.Count == 0
             ? -1
             : song.Parts.Max(part => part.Position);
@@ -90,9 +91,10 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
         {
             song.Parts[index].Position = temporaryStart + index;
         }
+
         await dbContext.SaveChangesAsync();
 
-        Dictionary<Guid, Part> existing = song.Parts.ToDictionary(part => part.Id);
+        var existing = song.Parts.ToDictionary(part => part.Id);
         HashSet<Guid> retained = [];
         List<Part> finalParts = [];
         for (int position = 0; position < replacement.Parts.Count; position++)
@@ -105,6 +107,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
                 {
                     throw new ArgumentException("A submitted part ID does not belong to this song.", nameof(replacement));
                 }
+
                 if (!retained.Add(requested.Id))
                 {
                     throw new ArgumentException("A part ID cannot be submitted more than once.", nameof(replacement));
@@ -124,11 +127,12 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
                     "Submit chords when changing lyrics in a part that already has chords.",
                     nameof(replacement));
             }
+
             target.Text = requested.Text;
             if (requested.Chords is not null)
             {
                 target.Chords ??= [];
-                Dictionary<int, Chord> existingChords =
+                var existingChords =
                     target.Chords.ToDictionary(chord => chord.Offset);
                 HashSet<int> requestedOffsets = [];
                 foreach (Chord chord in requested.Chords)
@@ -148,12 +152,14 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
                         });
                     }
                 }
+
                 foreach (Chord removed in existingChords.Values
                     .Where(chord => !requestedOffsets.Contains(chord.Offset)))
                 {
                     dbContext.Chords.Remove(removed);
                 }
             }
+
             target.Position = position;
             finalParts.Add(target);
         }
@@ -186,7 +192,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             return false;
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         dbContext.Songs.Remove(song);
         await dbContext.SaveChangesAsync();
         await MarkBookChangedAsync(songBookId);
@@ -194,8 +200,8 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
         return true;
     }
 
-    private async Task MarkBookChangedAsync(Guid songBookId) =>
-        await dbContext.SongBooks
+    private async Task MarkBookChangedAsync(Guid songBookId)
+        => await dbContext.SongBooks
             .Where(book => book.Id == songBookId)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(book => book.ContentRevision, book => book.ContentRevision + 1)

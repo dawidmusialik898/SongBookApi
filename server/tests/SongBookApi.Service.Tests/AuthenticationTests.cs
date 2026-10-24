@@ -113,7 +113,7 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
 
         Uri reset = new(_factory.EmailSender.PasswordResetLinkFor(email));
         Assert.Equal(TestApplicationFactory.AccountLinkOrigin, reset.GetLeftPart(UriPartial.Authority));
-        Dictionary<string, string> query = reset.Query.TrimStart('?')
+        var query = reset.Query.TrimStart('?')
             .Split('&', StringSplitOptions.RemoveEmptyEntries)
             .Select(part => part.Split('=', 2))
             .ToDictionary(
@@ -130,6 +130,7 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
         {
             Assert.Equal(HttpStatusCode.NoContent, resetResponse.StatusCode);
         }
+
         using (HttpResponseMessage reusedReset = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
                    client, "/auth/reset-password", new
                    {

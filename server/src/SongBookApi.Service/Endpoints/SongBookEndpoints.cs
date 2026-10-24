@@ -248,21 +248,23 @@ public static class SongBookEndpoints
             level = SongBookAccessLevel.Reader;
             return true;
         }
+
         if (string.Equals(value, "editor", StringComparison.OrdinalIgnoreCase))
         {
             level = SongBookAccessLevel.Editor;
             return true;
         }
+
         level = default;
         return false;
     }
 
-    private static SongBookResponse ToResponse(SongBookSummary book) =>
-        new(book.Id, book.Name, book.AccessLevel.ToContract(), book.SongCount);
+    private static SongBookResponse ToResponse(SongBookSummary book)
+        => new(book.Id, book.Name, book.AccessLevel.ToContract(), book.SongCount);
 
-    private static SongBookAccessResponse ToResponse(SongBookMember member) =>
-        new(member.Id, member.Email, member.AccessLevel.ToString().ToLowerInvariant());
+    private static SongBookAccessResponse ToResponse(SongBookMember member)
+        => new(member.Id, member.Email, member.AccessLevel.ToString().ToLowerInvariant());
 
-    private static IResult ValidationProblem(string key, string error) =>
-        Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [error] });
+    private static IResult ValidationProblem(string key, string error)
+        => Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [error] });
 }

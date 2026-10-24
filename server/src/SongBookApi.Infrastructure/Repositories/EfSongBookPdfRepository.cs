@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SongBookApi.Domain;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Entities;
@@ -13,7 +14,7 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISong
         Guid bookId,
         IReadOnlyCollection<Guid>? songIds)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         var book = await dbContext.SongBooks
             .AsNoTracking()
             .Where(candidate => candidate.Id == bookId)
@@ -29,7 +30,7 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISong
             .Where(song => song.SongBookId == bookId);
         if (songIds is not null)
         {
-            Guid[] ids = songIds.ToArray();
+            Guid[] ids = [.. songIds];
             query = query.Where(song => ids.Contains(song.Id));
         }
 
@@ -45,8 +46,8 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISong
         return new SongBookPdfSnapshot(book.Name, book.ContentRevision, songs);
     }
 
-    public async Task<PageResult<SongBookPdfListing>> ListAsync(Guid bookId, int page) =>
-        Paging.FromLookahead(await dbContext.SongBookPdfs
+    public async Task<PageResult<SongBookPdfListing>> ListAsync(Guid bookId, int page)
+        => Paging.FromLookahead(await dbContext.SongBookPdfs
             .AsNoTracking()
             .Where(pdf => pdf.SongBookId == bookId)
             .OrderByDescending(pdf => pdf.GeneratedAtUtc)
@@ -64,8 +65,8 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISong
                 pdf.SelectedSongsJson))
             .ToListAsync(), page);
 
-    public Task<SongBookPdf?> GetAsync(Guid bookId, Guid pdfId) =>
-        dbContext.SongBookPdfs
+    public Task<SongBookPdf?> GetAsync(Guid bookId, Guid pdfId)
+        => dbContext.SongBookPdfs
             .AsNoTracking()
             .SingleOrDefaultAsync(pdf => pdf.SongBookId == bookId && pdf.Id == pdfId);
 

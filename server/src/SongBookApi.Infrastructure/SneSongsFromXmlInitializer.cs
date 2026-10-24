@@ -36,12 +36,12 @@ public class SneSongsFromXmlSeeder : ISongDbSeeder
         };
 
     private static List<Part> GetParts(XmlNodeList parts)
-        => parts.Cast<XmlNode>().Select(p =>
+        => [.. parts.Cast<XmlNode>().Select(p =>
             new Part()
             {
                 Name = p.SelectSingleNode(@".//Part")?.InnerText,
                 Text = p.SelectSingleNode(@".//Text")?.InnerText
-            }).ToList();
+            })];
 }
 
 public interface ISongDbSeeder

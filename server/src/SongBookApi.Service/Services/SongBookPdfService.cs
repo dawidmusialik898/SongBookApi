@@ -40,9 +40,7 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
         DateTimeOffset generatedAtUtc = DateTimeOffset.UtcNow;
         SelectedPdfSong[] selectedSongs = songIds is null
             ? []
-            : snapshot.Songs
-                .Select(song => new SelectedPdfSong(song.Id, song.Title ?? "Untitled"))
-                .ToArray();
+            : [.. snapshot.Songs.Select(song => new SelectedPdfSong(song.Id, song.Title ?? "Untitled"))];
         SongBookPdf pdf = new()
         {
             Id = Guid.NewGuid(),
@@ -72,8 +70,8 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
         return pdf is null ? null : new SongBookPdfDownload(pdf.Content, pdf.IncludeChords);
     }
 
-    private static SongBookPdfInfo ToInfo(SongBookPdfListing pdf) =>
-        new(
+    private static SongBookPdfInfo ToInfo(SongBookPdfListing pdf)
+        => new(
             pdf.Id,
             pdf.IncludeChords,
             pdf.IsWholeBook,

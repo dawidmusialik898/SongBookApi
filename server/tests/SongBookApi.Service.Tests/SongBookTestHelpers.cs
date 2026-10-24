@@ -20,8 +20,8 @@ internal static class SongBookTestHelpers
         HttpClient client,
         Guid bookId,
         string title = "Test song",
-        object[]? parts = null) =>
-        CreateSongWithFieldsAsync(
+        object[]? parts = null)
+        => CreateSongWithFieldsAsync(
             client,
             bookId,
             new

@@ -4,13 +4,14 @@ using SongBookApi.Domain;
 using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Repositories;
 using SongBookApi.Infrastructure.Identity;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace SongBookApi.Infrastructure.Repositories;
 
 public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBookRepository
 {
-    public async Task<PageResult<AccessibleSongBook>> ListAccessibleAsync(string userId, int page) =>
-        Paging.FromLookahead(await dbContext.SongBooks
+    public async Task<PageResult<AccessibleSongBook>> ListAccessibleAsync(string userId, int page)
+        => Paging.FromLookahead(await dbContext.SongBooks
             .AsNoTracking()
             .Where(book => book.OwnerId == userId ||
                 book.AccessEntries.Any(entry => entry.UserId == userId))
@@ -31,8 +32,8 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
                 book.Songs.Count))
             .ToListAsync(), page);
 
-    public async Task<AccessibleSongBook?> GetAccessibleAsync(Guid bookId, string userId) =>
-        await dbContext.SongBooks
+    public async Task<AccessibleSongBook?> GetAccessibleAsync(Guid bookId, string userId)
+        => await dbContext.SongBooks
             .AsNoTracking()
             .Where(book => book.Id == bookId &&
                 (book.OwnerId == userId || book.AccessEntries.Any(entry => entry.UserId == userId)))
@@ -49,11 +50,11 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
                 book.Songs.Count))
             .SingleOrDefaultAsync();
 
-    public Task<SongBook?> GetByIdAsync(Guid bookId) =>
-        dbContext.SongBooks.SingleOrDefaultAsync(book => book.Id == bookId);
+    public Task<SongBook?> GetByIdAsync(Guid bookId)
+        => dbContext.SongBooks.SingleOrDefaultAsync(book => book.Id == bookId);
 
-    public Task<bool> OwnerHasNameAsync(string ownerId, string normalizedName, Guid? exceptBookId = null) =>
-        dbContext.SongBooks.AnyAsync(book =>
+    public Task<bool> OwnerHasNameAsync(string ownerId, string normalizedName, Guid? exceptBookId = null)
+        => dbContext.SongBooks.AnyAsync(book =>
             book.OwnerId == ownerId &&
             book.NormalizedName == normalizedName &&
             (!exceptBookId.HasValue || book.Id != exceptBookId.Value));
@@ -71,7 +72,7 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         string normalizedName,
         DateTimeOffset updatedAtUtc)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         songBook.Name = name;
         songBook.NormalizedName = normalizedName;
         songBook.UpdatedAtUtc = updatedAtUtc;
@@ -89,8 +90,8 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         await dbContext.SaveChangesAsync();
     }
 
-    public async Task<PageResult<SongBookCollaborator>> ListAccessAsync(Guid bookId, int page) =>
-        Paging.FromLookahead(await (
+    public async Task<PageResult<SongBookCollaborator>> ListAccessAsync(Guid bookId, int page)
+        => Paging.FromLookahead(await (
             from access in dbContext.SongBookAccessEntries.AsNoTracking()
             join user in dbContext.Users.AsNoTracking() on access.UserId equals user.Id
             where access.SongBookId == bookId
@@ -103,8 +104,8 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
             .Take(Paging.Size + 1)
             .ToListAsync(), page);
 
-    public Task<SongBookAccess?> FindAccessAsync(Guid bookId, string userId) =>
-        dbContext.SongBookAccessEntries.SingleOrDefaultAsync(entry =>
+    public Task<SongBookAccess?> FindAccessAsync(Guid bookId, string userId)
+        => dbContext.SongBookAccessEntries.SingleOrDefaultAsync(entry =>
             entry.SongBookId == bookId && entry.UserId == userId);
 
     public async Task<SongBookAccess> UpsertAccessAsync(

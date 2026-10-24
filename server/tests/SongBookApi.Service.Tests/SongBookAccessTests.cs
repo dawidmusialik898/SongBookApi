@@ -88,13 +88,13 @@ public sealed class SongBookAccessTests : IClassFixture<TestApplicationFactory>
         Assert.False(await db.SongBookAccessEntries.AnyAsync(entry => entry.SongBookId == book.Id));
     }
 
-    private static Task<string> JsonContentAsync(SongBookAccessResponse response) =>
-        Task.FromResult(System.Text.Json.JsonSerializer.Serialize(
+    private static Task<string> JsonContentAsync(SongBookAccessResponse response)
+        => Task.FromResult(System.Text.Json.JsonSerializer.Serialize(
             response,
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
 
-    private Task<HttpClient> CreateUserAsync(string prefix) =>
-        AuthenticationTestHelpers.CreateConfirmedClientAsync(
+    private Task<HttpClient> CreateUserAsync(string prefix)
+        => AuthenticationTestHelpers.CreateConfirmedClientAsync(
             _factory,
             $"{prefix}-{Guid.NewGuid():N}@example.test");
 }

@@ -112,22 +112,26 @@ public sealed class UserModerationTests
         {
             Assert.Equal(HttpStatusCode.Unauthorized, (await guest.GetAsync("/admin/users")).StatusCode);
         }
+
         Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.GetAsync("/admin/users")).StatusCode);
         using (HttpResponseMessage noToken = await super.PutAsJsonAsync(
                    $"/admin/users/{moderatorId}/role", new { role = "moderator" }))
         {
             Assert.Equal(HttpStatusCode.BadRequest, noToken.StatusCode);
         }
+
         using (HttpResponseMessage noBanToken = await super.PutAsJsonAsync(
                    $"/admin/users/{ordinaryId}/ban", new { isBanned = true }))
         {
             Assert.Equal(HttpStatusCode.BadRequest, noBanToken.StatusCode);
         }
+
         using (HttpResponseMessage noDeleteToken = await super.DeleteAsync(
                    $"/admin/users/{ordinaryId}"))
         {
             Assert.Equal(HttpStatusCode.BadRequest, noDeleteToken.StatusCode);
         }
+
         using (HttpResponseMessage assigned = await AuthenticationTestHelpers.PutJsonWithAntiforgeryAsync(
                    super, $"/admin/users/{moderatorId}/role", new { role = "moderator" }))
         {
@@ -139,6 +143,7 @@ public sealed class UserModerationTests
         {
             Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
         }
+
         Assert.Equal("moderator",
             (await moderator.GetFromJsonAsync<AuthenticatedUserResponse>("/auth/me"))?.Role);
         SongBookResponse privateBook = await SongBookTestHelpers.CreateBookAsync(
@@ -192,6 +197,7 @@ public sealed class UserModerationTests
         {
             Assert.Equal(HttpStatusCode.NoContent, assignedOther.StatusCode);
         }
+
         Assert.Equal(HttpStatusCode.Forbidden,
             (await AuthenticationTestHelpers.DeleteWithAntiforgeryAsync(
                 moderator, $"/admin/users/{anotherId}")).StatusCode);
@@ -200,11 +206,13 @@ public sealed class UserModerationTests
         {
             Assert.Equal(HttpStatusCode.NoContent, demoted.StatusCode);
         }
+
         Assert.Equal(HttpStatusCode.Unauthorized, (await moderator.GetAsync("/admin/users")).StatusCode);
         using (HttpResponseMessage login = await LoginAsync(moderator, moderatorEmail))
         {
             Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
         }
+
         Assert.Equal(HttpStatusCode.Forbidden, (await moderator.GetAsync("/admin/users")).StatusCode);
     }
 
@@ -238,6 +246,7 @@ public sealed class UserModerationTests
         {
             Assert.Equal(HttpStatusCode.Unauthorized, deniedLogin.StatusCode);
         }
+
         Assert.Contains(
             (await super.GetFromJsonAsync<PageResult<ModeratedUserResponse>>("/admin/users"))!.Items,
             user => user.Id == targetId && user.IsBanned);
@@ -246,10 +255,12 @@ public sealed class UserModerationTests
         {
             Assert.Equal(HttpStatusCode.NoContent, unbanned.StatusCode);
         }
+
         using (HttpResponseMessage login = await LoginAsync(target, targetEmail))
         {
             Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
         }
+
         Assert.Equal(HttpStatusCode.OK, (await target.GetAsync("/songbooks")).StatusCode);
     }
 
@@ -331,8 +342,8 @@ public sealed class UserModerationTests
         Assert.False(await db.SongBookAccessEntries.AnyAsync(access => access.UserId == targetId));
     }
 
-    private static string UniqueEmail(string prefix) =>
-        $"{prefix}-{Guid.NewGuid():N}@example.test";
+    private static string UniqueEmail(string prefix)
+        => $"{prefix}-{Guid.NewGuid():N}@example.test";
 
     private static async Task<string> GetUserIdAsync(TestApplicationFactory factory, string email)
     {
@@ -343,8 +354,8 @@ public sealed class UserModerationTests
         return user.Id;
     }
 
-    private static Task<HttpResponseMessage> LoginAsync(HttpClient client, string email) =>
-        AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+    private static Task<HttpResponseMessage> LoginAsync(HttpClient client, string email)
+        => AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
             client, "/auth/login", new
             {
                 email,

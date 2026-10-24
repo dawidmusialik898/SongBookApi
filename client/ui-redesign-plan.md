@@ -1,6 +1,6 @@
 # UI Redesign Implementation Plan
 
-> Status: approved, not started. Prepared 2026-10-24.
+> Status: in progress. Prepared 2026-10-24.
 >
 > Baseline: branch `feature/copilot-experimentation`, commit `5b47c43`. The
 > worktree also contained uncommitted work: server PDF font embedding and a
@@ -19,7 +19,7 @@ Update this table at the end of every phase.
 | --- | --- | --- | --- | --- |
 | 0 | Baseline and branch | Complete | 20937a4 | Branch already existed and was checked out; server 79/79, client 99/99. |
 | 1 | Server: song search and adjacent songs | Complete | 2fc8752 | Server 99/99, client 99/99; seeded route checks pass. |
-| 2 | Test infrastructure and API modules | Not started | | |
+| 2 | Test infrastructure and API modules | Complete | 6d3ffe4 | Client 115/115; server 99/99. Legacy UI tests still pass. |
 | 3 | App shell, router, auth, library | Not started | | |
 | 4 | Book and song screens | Not started | | |
 | 5 | Song editor with inline chords | Not started | | |
@@ -1498,17 +1498,17 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 0: Baseline
 
-- [ ] `git status`; apply section 1, step 1 (files this plan touches must be
+- [x] `git status`; apply section 1, step 1 (files this plan touches must be
       committed first; other unrelated changes are never committed).
-- [ ] Create `feature/ui-redesign`.
-- [ ] Run both suites; record the pass counts in Notes. Fix nothing unrelated.
+- [x] Create `feature/ui-redesign`.
+- [x] Run both suites; record the pass counts in Notes. Fix nothing unrelated.
 
 ### Phase 1: Server search and adjacent songs
 
-- [ ] Implement section 6.3 (DTOs, `SongSearch`, repository, service,
+- [x] Implement section 6.3 (DTOs, `SongSearch`, repository, service,
       contract, endpoints, test fake update).
-- [ ] Add the tests from 6.4.
-- [ ] Update `server/README.md` (6.5).
+- [x] Add the tests from 6.4.
+- [x] Update `server/README.md` (6.5).
 - Acceptance: `dotnet test server/SongBookApi.slnx` passes. Run locally and
   check `GET /songbooks/{id}/songs?search=...` and
   `GET /songbooks/{id}/songs/{songId}/adjacent` against seeded data. The
@@ -1516,13 +1516,13 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 2: Test infrastructure and API modules
 
-- [ ] API module changes (7.15) with unit tests (9.4 rows for `songs-api`,
+- [x] API module changes (7.15) with unit tests (9.4 rows for `songs-api`,
       `song-books-api`, `moderation-api`, `pagination`).
-- [ ] `installAppBrowser` and the fake DOM extensions (9.2), without changing
-      legacy behavior.
-- [ ] `tests/helpers/fakeApi.mjs` with `unit/fake-api.test.mjs` (9.3).
-- [ ] Rewrite `unit/client-security.test.mjs` (9.4).
-- [ ] Migrate `functional/songs-api-crud.test.mjs` to the fake API.
+- [x] `installAppBrowser` and the fake DOM extensions (9.2), without changing
+      legacy behavior; covered by `unit/app-browser`.
+- [x] `tests/helpers/fakeApi.mjs` with `unit/fake-api.test.mjs` (9.3).
+- [x] Rewrite `unit/client-security.test.mjs` (9.4).
+- [x] Migrate `functional/songs-api-crud.test.mjs` to the fake API.
 - Acceptance: all existing UI tests still pass (the old UI is untouched),
   plus the new and updated tests.
 

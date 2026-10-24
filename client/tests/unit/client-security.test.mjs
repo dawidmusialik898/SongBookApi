@@ -31,6 +31,7 @@ test("client keeps authentication same-origin and out of browser storage", () =>
             assert.doesNotMatch(source, /\bfetch\s*\(/, file)
         }
 
+        assert.doesNotMatch(source, /\bwindow\s*\.\s*confirm\s*\(/i, file)
         assert.doesNotMatch(
             source,
             /console\.(?:log|info|warn)\s*\([^)]*(?:password|code|token)/i,

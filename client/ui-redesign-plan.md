@@ -18,7 +18,7 @@ Update this table at the end of every phase.
 | Phase | Scope | Status | Commit | Notes |
 | --- | --- | --- | --- | --- |
 | 0 | Baseline and branch | Complete | 20937a4 | Branch already existed and was checked out; server 79/79, client 99/99. |
-| 1 | Server: song search and adjacent songs | Not started | | |
+| 1 | Server: song search and adjacent songs | Complete | 2fc8752 | Server 99/99, client 99/99; seeded route checks pass. |
 | 2 | Test infrastructure and API modules | Not started | | |
 | 3 | App shell, router, auth, library | Not started | | |
 | 4 | Book and song screens | Not started | | |

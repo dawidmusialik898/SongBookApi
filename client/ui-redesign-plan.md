@@ -22,7 +22,7 @@ Update this table at the end of every phase.
 | 2 | Test infrastructure and API modules | Complete | 6d3ffe4 | Client 115/115; server 99/99. Legacy UI tests still pass. |
 | 3 | App shell, router, auth, library | Complete | b97613c | Client 78/78; server 99/99; Chrome smoke passed for auth, confirmation, book creation, Back/Forward, sign-out, and reset links. Legacy `main.js`: 7d41250. |
 | 4 | Book and song screens | Complete | 8ca0f7e | Client 103/103; server 99/99. Book/song screens, search, snapshot restore, pager, and navigation-race coverage. |
-| 5 | Song editor with inline chords | Not started | | |
+| 5 | Song editor with inline chords | Complete | | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
 | 6 | PDF and share screens | Not started | | |
 | 7 | User management screen | Not started | | |
 | 8 | Polish, cleanup, documentation | Not started | | |
@@ -879,6 +879,7 @@ client/
     httpClient.js  pagination.js  songsApi.js  songBooksApi.js  authApi.js  moderationApi.js
     ui/
       dom.js              h(), findActionTarget(), isInDocument(), later()
+      songEditorForm.js   focus-mode editor form and part controls
       shell.js            app bar: breadcrumb, account menu, focus mode
       status.js           status region (5.6.3)
       dialog.js           confirmDialog(), promptDialog() (5.6.1)
@@ -889,7 +890,8 @@ client/
       pdf.js              readPdfMetadata, pdfDownloadName, downloadPdfFile (ported)
     screens/
       authScreen.js  libraryScreen.js  bookScreen.js  songScreen.js
-      songEditorScreen.js  pdfListScreen.js  pdfNewScreen.js
+      songEditorScreen.js  songEditorController.js
+      pdfListScreen.js  pdfNewScreen.js
       shareScreen.js  usersScreen.js  notFoundScreen.js  systemScreens.js (loading, unavailable)
 ```
 
@@ -1569,14 +1571,14 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 5: Song editor with inline chords
 
-- [ ] `chordNotation.js` (7.10), the new `songForm.js` (7.11), and
+- [x] `chordNotation.js` (7.10), the new `songForm.js` (7.11), and
       `drafts.js` (7.8), with unit tests.
-- [ ] `songEditorScreen` (5.5.6), including focus mode, dirty tracking,
+- [x] `songEditorScreen` (5.5.6), including focus mode, dirty tracking,
       Cancel confirmation, draft keep and restore, `beforeunload`, and error
       handling.
-- [ ] Session-ended flow with the draft variant message (7.4).
-- [ ] Remove `adjustChordsForTextEdit` and its tests from `chords.js`.
-- [ ] Tests: `unit/chord-notation`, `unit/song-form`, `unit/drafts`,
+- [x] Session-ended flow with the draft variant message (7.4).
+- [x] Remove `adjustChordsForTextEdit` and its tests from `chords.js`.
+- [x] Tests: `unit/chord-notation`, `unit/song-form`, `unit/drafts`,
       `integration/song-editor`, and the editor cases in
       `integration/session-expiry`.
 - Acceptance: create a song with chords and verify they render above the

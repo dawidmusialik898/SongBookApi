@@ -32,7 +32,7 @@ test("router matches songs/new before the song parameter route", async () => {
         await browser.navigate("#/books/book-1/songs/new")
         assert.equal(app.context.router.current.route.name, "song-new")
         assert.equal(app.context.router.current.params.bookId, "book-1")
-        assert.equal(browser.screen(), "not-found")
+        assert.equal(browser.screen(), "song-editor")
     } finally {
         browser.restore()
     }

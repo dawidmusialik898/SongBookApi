@@ -80,6 +80,10 @@ test("moderators see the Manage users route and signed-in users do not", async (
 test("not-found navigation updates title and focus; editor routes hide the app bar", async () => {
     const api = createFakeApi()
     api.seed.account("owner@example.com")
+    const bookId = api.seed.book({
+        owner: "owner@example.com",
+        name: "Editor book"
+    })
     api.signIn("owner@example.com")
     const { app, browser } = createAppHarness(api)
     try {
@@ -105,8 +109,12 @@ test("not-found navigation updates title and focus; editor routes hide the app b
             "screen-heading"
         )
 
-        await browser.navigate("#/books/book-1/songs/new")
-        assert.equal(browser.screen(), "not-found")
+        await browser.navigate(`#/books/${bookId}/songs/new`)
+        assert.equal(browser.screen(), "song-editor")
+        assert.equal(
+            browser.document.getElementById("song-editor-form") !== null,
+            true
+        )
         assert.equal(
             browser.document.getElementById("app-bar").hidden,
             true

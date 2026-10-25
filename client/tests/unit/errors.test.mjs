@@ -11,7 +11,9 @@ import {
     getLoadSongBooksErrorMessage,
     getLoadSongsErrorMessage,
     getSafeApiDetail,
+    getSaveSongErrorMessage,
     getSaveSongBookErrorMessage,
+    isUnavailableBookError,
     toSentence
 } from "../../src/ui/errors.js"
 
@@ -205,4 +207,57 @@ test("song deletion failures use the original actionable messages", () => {
         })),
         "The server could not delete the song. The song remains available. Try again."
     )
+})
+
+test("song save failures include only safe details and preserve draft guidance", () => {
+    assert.equal(
+        getSaveSongErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: { detail: "The title is invalid" }
+        }), "create"),
+        "The API rejected the submitted song. The title is invalid. " +
+            "Review the entered values and try again. " +
+            "Your new song draft was kept."
+    )
+    assert.equal(
+        getSaveSongErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: { detail: "<unsafe>" }
+        }), "edit"),
+        "The API rejected the submitted song. Review the entered values " +
+            "and try again. Your changes were kept."
+    )
+    assert.equal(
+        getSaveSongErrorMessage(new ApiError("offline", {
+            status: null
+        }), "edit"),
+        "Could not reach the SongBook API. Your changes were kept. Try again."
+    )
+    assert.equal(
+        getSaveSongErrorMessage(new ApiError("server", {
+            status: 503
+        }), "create"),
+        "The server could not create the song. " +
+            "Your new song draft was kept. Try again."
+    )
+    assert.equal(
+        getSaveSongErrorMessage(new ApiError("failed", {
+            status: 403
+        }), "edit"),
+        "Could not save the changes. Your changes were kept. Try again."
+    )
+})
+
+test("book-unavailable classification covers access and missing-book responses", () => {
+    for (const status of [403, 404]) {
+        assert.equal(
+            isUnavailableBookError(new ApiError("unavailable", { status })),
+            true
+        )
+    }
+    assert.equal(
+        isUnavailableBookError(new ApiError("failed", { status: 500 })),
+        false
+    )
+    assert.equal(isUnavailableBookError(new Error("failed")), false)
 })

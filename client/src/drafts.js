@@ -1,3 +1,11 @@
+export function createDraftKey(bookId, songId = null) {
+    const book = normalizeId(bookId, "Song book id")
+    const song = songId === null || songId === undefined
+        ? "new"
+        : normalizeId(songId, "Song id")
+    return `${book}/${song}`
+}
+
 export function createDrafts() {
     let owner = null
     const drafts = new Map()
@@ -55,4 +63,15 @@ export function createDrafts() {
             return drafts.size
         }
     }
+}
+
+function normalizeId(value, label) {
+    if (
+        value === null ||
+        value === undefined ||
+        String(value).trim() === ""
+    ) {
+        throw new TypeError(`${label} must not be blank.`)
+    }
+    return String(value)
 }

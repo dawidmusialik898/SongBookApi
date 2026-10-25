@@ -3,6 +3,7 @@ import { renderBookScreen } from "./screens/bookScreen.js"
 import { renderLibraryScreen } from "./screens/libraryScreen.js"
 import { renderNotFoundScreen } from "./screens/notFoundScreen.js"
 import { renderSongScreen } from "./screens/songScreen.js"
+import { renderSongEditorScreen } from "./screens/songEditorScreen.js"
 import {
     renderLoadingScreen,
     renderUnavailableScreen
@@ -28,11 +29,11 @@ const ROUTES = [
     },
     {
         name: "song-new",
-        screenName: "not-found",
+        screenName: "song-editor",
         segments: ["books", ":bookId", "songs", "new"],
         minimumAccess: "editor",
         focusMode: true,
-        render: renderNotFoundScreen
+        render: renderSongEditorScreen
     },
     {
         name: "pdf-new",
@@ -44,11 +45,11 @@ const ROUTES = [
     },
     {
         name: "song-edit",
-        screenName: "not-found",
+        screenName: "song-editor",
         segments: ["books", ":bookId", "songs", ":songId", "edit"],
         minimumAccess: "editor",
         focusMode: true,
-        render: renderNotFoundScreen
+        render: renderSongEditorScreen
     },
     {
         name: "song",

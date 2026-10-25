@@ -17,6 +17,8 @@ export function createSession(ctx) {
         generation: 0
     }
     let ending = null
+    let endingSession = false
+    let discardDraftsOnExit = false
     let signingOut = false
 
     async function load() {
@@ -68,6 +70,7 @@ export function createSession(ctx) {
             return ending
         }
 
+        endingSession = true
         state.generation += 1
         state.status = "anonymous"
         state.email = null
@@ -89,6 +92,7 @@ export function createSession(ctx) {
             return true
         })().finally(() => {
             ending = null
+            endingSession = false
         })
         return ending
     }
@@ -119,22 +123,38 @@ export function createSession(ctx) {
                 return false
             }
 
+            discardDraftsOnExit = true
             ctx.drafts.clear()
             ctx.cache.bookList = null
             ctx.auth.forceAuth = false
             ctx.auth.view = "login"
             ctx.auth.emailPrefill = ""
             resetAntiforgeryToken()
-            await load()
-            await ctx.router.navigate("/", {
-                replace: true,
-                status: "Signed out."
-            })
-            return true
+            try {
+                await load()
+                await ctx.router.navigate("/", {
+                    replace: true,
+                    status: "Signed out."
+                })
+                return true
+            } finally {
+                discardDraftsOnExit = false
+            }
         } finally {
             signingOut = false
         }
     }
 
-    return { state, load, ended, signOut }
+    return {
+        state,
+        load,
+        ended,
+        signOut,
+        isEnding() {
+            return endingSession
+        },
+        shouldDiscardDrafts() {
+            return discardDraftsOnExit
+        }
+    }
 }

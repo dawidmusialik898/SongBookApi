@@ -176,6 +176,42 @@ export function getDeleteSongErrorMessage(error) {
     return "Could not delete the song. Try again."
 }
 
+export function getSaveSongErrorMessage(error, mode) {
+    const keptDraft = mode === "create"
+        ? "Your new song draft was kept."
+        : "Your changes were kept."
+    if (error instanceof ApiError && error.status === 400) {
+        const detail = getSafeApiDetail(error)
+        return "The API rejected the submitted song." +
+            (detail === null ? "" : ` ${toSentence(detail)}`) +
+            " Review the entered values and try again. " +
+            keptDraft
+    }
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            `${keptDraft} Try again.`
+    }
+    if (
+        error instanceof ApiError &&
+        error.status !== null &&
+        error.status >= 500
+    ) {
+        return mode === "create"
+            ? "The server could not create the song. " +
+                `${keptDraft} Try again.`
+            : "The server could not save the changes. " +
+                `${keptDraft} Try again.`
+    }
+    return mode === "create"
+        ? "Could not create the song. Your new song draft was kept. Try again."
+        : "Could not save the changes. Your changes were kept. Try again."
+}
+
+export function isUnavailableBookError(error) {
+    return error instanceof ApiError &&
+        [403, 404].includes(error.status)
+}
+
 export async function handleError(ctx, error, scope = null) {
     if (error?.name === "AbortError") {
         return false

@@ -542,17 +542,27 @@ textarea {
 }
 
 .editor-bar__title {
+    flex: 1;
     min-width: 0;
     text-align: center;
+}
+
+.editor-bar__title h1 {
+    font-size: 1.125rem;
+    line-height: 1.25;
+    margin: 0;
 }
 
 .editor-bar__book {
     color: var(--muted);
     display: block;
     font-size: 0.875rem;
+    overflow-wrap: anywhere;
 }
 
 .editor-form {
+    display: grid;
+    gap: 1rem;
     margin-inline: auto;
     max-width: 46rem;
     padding: 1rem;
@@ -560,6 +570,30 @@ textarea {
 
 .editor-form textarea {
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.editor-details {
+    display: grid;
+    gap: 1rem;
+}
+
+.editor-hint {
+    color: var(--muted);
+    margin: 0;
+}
+
+.editor-status {
+    color: var(--warning-text);
+    margin: 0;
+}
+
+.editor-notice {
+    border-left: 0.25rem solid var(--accent);
+    padding-inline: 0.75rem;
+}
+
+.editor-notice p {
+    margin-block: 0 0.5rem;
 }
 
 .part-editor {
@@ -570,11 +604,18 @@ textarea {
     margin: 1rem 0;
     min-width: 0;
     padding: 1rem 0 0;
+    position: relative;
 }
 
 .part-editor legend {
     font-weight: 700;
-    padding-inline-end: 0.5rem;
+    padding-inline-end: 3.5rem;
+}
+
+.part-editor__menu {
+    position: absolute;
+    right: 0;
+    top: 0.25rem;
 }
 
 .part-editor__actions {
@@ -586,6 +627,8 @@ textarea {
 .part-error,
 .form-error {
     color: var(--danger);
+    margin: 0;
+    white-space: pre-wrap;
 }
 
 .visually-hidden {

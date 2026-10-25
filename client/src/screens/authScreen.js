@@ -208,9 +208,16 @@ function createForm(ctx, view, rerender, isPending, setPending) {
                 }
 
                 ctx.auth.emailPrefill = ""
+                ctx.auth.draftRestored = false
                 await ctx.router.render({ focus: true })
                 if (ctx.session.state.generation === loadedGeneration) {
-                    ctx.status.show("success", "Signed in.")
+                    ctx.status.show(
+                        "success",
+                        ctx.auth.draftRestored
+                            ? "Signed in. Your unsaved song draft was restored."
+                            : "Signed in."
+                    )
+                    ctx.auth.draftRestored = false
                 }
             }, isPending, setPending)
         )

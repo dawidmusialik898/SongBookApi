@@ -42,6 +42,7 @@ export function startApp() {
             view: "login",
             emailPrefill: "",
             resetCredentials: null,
+            draftRestored: false,
             forceAuth: false
         },
         pendingStatus: null,

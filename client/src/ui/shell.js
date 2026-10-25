@@ -10,6 +10,11 @@ export function createShell(ctx) {
         return menu
     }
 
+    function unregisterMenu(menu) {
+        menu.close()
+        menus.delete(menu)
+    }
+
     function closeMenus({ focus = false } = {}) {
         for (const menu of menus) {
             menu.close({ focus })
@@ -160,6 +165,7 @@ export function createShell(ctx) {
 
     return {
         registerMenu,
+        unregisterMenu,
         closeMenus,
         closeMenusOutside,
         handleKeydown,

@@ -21,7 +21,7 @@ Update this table at the end of every phase.
 | 1 | Server: song search and adjacent songs | Complete | 2fc8752 | Server 99/99, client 99/99; seeded route checks pass. |
 | 2 | Test infrastructure and API modules | Complete | 6d3ffe4 | Client 115/115; server 99/99. Legacy UI tests still pass. |
 | 3 | App shell, router, auth, library | Complete | b97613c | Client 78/78; server 99/99; Chrome smoke passed for auth, confirmation, book creation, Back/Forward, sign-out, and reset links. Legacy `main.js`: 7d41250. |
-| 4 | Book and song screens | Not started | | |
+| 4 | Book and song screens | Complete | 8ca0f7e | Client 103/103; server 99/99. Book/song screens, search, snapshot restore, pager, and navigation-race coverage. |
 | 5 | Song editor with inline chords | Not started | | |
 | 6 | PDF and share screens | Not started | | |
 | 7 | User management screen | Not started | | |
@@ -1553,14 +1553,14 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 4: Book and song screens
 
-- [ ] `bookScreen` (5.5.4): header, actions, owner menu with rename and
+- [x] `bookScreen` (5.5.4): header, actions, owner menu with rename and
       delete, search with debounce and `q`, "Show more", snapshot restore
       (7.9).
-- [ ] `songScreen` (5.5.5): meta, parts, chords toggle, pager, arrow keys,
+- [x] `songScreen` (5.5.5): meta, parts, chords toggle, pager, arrow keys,
       delete, 404 handling.
-- [ ] `handleError` rules for books and songs (7.6).
-- [ ] CSS for book rows, song typography, and the pager.
-- [ ] Tests: `integration/book-screen`, `integration/song-screen`,
+- [x] `handleError` rules for books and songs (7.6).
+- [x] CSS for book rows, song typography, and the pager.
+- [x] Tests: `integration/book-screen`, `integration/song-screen`,
       `integration/navigation-races`.
 - Acceptance: browse a book with more than 50 songs (Show more, then Back
   restores the position), search with Polish diacritics, step through songs

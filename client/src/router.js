@@ -2,6 +2,9 @@ import { renderAuthScreen } from "./screens/authScreen.js"
 import { renderBookScreen } from "./screens/bookScreen.js"
 import { renderLibraryScreen } from "./screens/libraryScreen.js"
 import { renderNotFoundScreen } from "./screens/notFoundScreen.js"
+import { renderPdfListScreen } from "./screens/pdfListScreen.js"
+import { renderPdfNewScreen } from "./screens/pdfNewScreen.js"
+import { renderShareScreen } from "./screens/shareScreen.js"
 import { renderSongScreen } from "./screens/songScreen.js"
 import { renderSongEditorScreen } from "./screens/songEditorScreen.js"
 import {
@@ -37,11 +40,11 @@ const ROUTES = [
     },
     {
         name: "pdf-new",
-        screenName: "not-found",
+        screenName: "pdf-new",
         segments: ["books", ":bookId", "pdfs", "new"],
         minimumAccess: "owner",
         focusMode: false,
-        render: renderNotFoundScreen
+        render: renderPdfNewScreen
     },
     {
         name: "song-edit",
@@ -61,19 +64,19 @@ const ROUTES = [
     },
     {
         name: "pdfs",
-        screenName: "not-found",
+        screenName: "pdfs",
         segments: ["books", ":bookId", "pdfs"],
         minimumAccess: "reader",
         focusMode: false,
-        render: renderNotFoundScreen
+        render: renderPdfListScreen
     },
     {
         name: "share",
-        screenName: "not-found",
+        screenName: "share",
         segments: ["books", ":bookId", "share"],
         minimumAccess: "owner",
         focusMode: false,
-        render: renderNotFoundScreen
+        render: renderShareScreen
     },
     {
         name: "book",

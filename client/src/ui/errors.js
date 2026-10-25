@@ -144,6 +144,65 @@ export function getLoadSongsErrorMessage(error) {
     return "Could not load songs. Try again."
 }
 
+export function getLoadPdfsErrorMessage(error) {
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "PDF exports could not be loaded. Try again."
+    }
+    if (error instanceof ApiError && error.status >= 500) {
+        return "The server could not load PDF exports. Try again."
+    }
+    return "Could not load PDF exports. Try again."
+}
+
+export function getGeneratePdfErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 400) {
+        const detail = getSafeApiDetail(error)
+        return detail === null
+            ? "The PDF request was rejected. Check the selected songs."
+            : `The PDF request was rejected. ${toSentence(detail)}`
+    }
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not generate the PDF. It may have been created; " +
+            "try again."
+    }
+    return "Could not generate the PDF. Try again."
+}
+
+export function getDownloadPdfErrorMessage(error) {
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "Try downloading the PDF again."
+    }
+    return "Could not download the PDF. Try again."
+}
+
+export function getLoadCollaboratorsErrorMessage(error) {
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "Collaborators could not be loaded. Try again."
+    }
+    if (error instanceof ApiError && error.status >= 500) {
+        return "The server could not load collaborators. Try again."
+    }
+    return "Could not load collaborators. Try again."
+}
+
+export function getSongBookAccessErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 400) {
+        const detail = getSafeApiDetail(error)
+        return detail === null
+            ? "The collaborator access request was rejected."
+            : "The collaborator access request was rejected. " +
+                toSentence(detail)
+    }
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "The collaborator change was not saved."
+    }
+    return "Could not update collaborator access. Try again."
+}
+
 export function getLoadSongErrorMessage(error) {
     if (error instanceof ApiError && error.status === null) {
         return "Could not reach the SongBook API. " +

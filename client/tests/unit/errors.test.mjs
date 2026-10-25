@@ -4,14 +4,19 @@ import test from "node:test"
 import { ApiError } from "../../src/httpClient.js"
 import {
     getAuthValidationMessage,
+    getDownloadPdfErrorMessage,
     getDeleteSongErrorMessage,
     getDeleteSongBookErrorMessage,
+    getGeneratePdfErrorMessage,
+    getLoadCollaboratorsErrorMessage,
+    getLoadPdfsErrorMessage,
     getLoadSongBookErrorMessage,
     getLoadSongErrorMessage,
     getLoadSongBooksErrorMessage,
     getLoadSongsErrorMessage,
     getSafeApiDetail,
     getSaveSongErrorMessage,
+    getSongBookAccessErrorMessage,
     getSaveSongBookErrorMessage,
     isUnavailableBookError,
     toSentence
@@ -185,6 +190,103 @@ test("book, song, and song-list load messages keep the ported wording", () => {
             status: null
         })),
         "Could not reach the SongBook API. Select the song again to retry."
+    )
+})
+
+test("PDF load, generation, and download errors use actionable messages", () => {
+    assert.equal(
+        getLoadPdfsErrorMessage(new ApiError("offline", { status: null })),
+        "Could not reach the SongBook API. " +
+            "PDF exports could not be loaded. Try again."
+    )
+    assert.equal(
+        getLoadPdfsErrorMessage(new ApiError("server", { status: 503 })),
+        "The server could not load PDF exports. Try again."
+    )
+    assert.equal(
+        getLoadPdfsErrorMessage(new ApiError("bad request", { status: 400 })),
+        "Could not load PDF exports. Try again."
+    )
+    assert.equal(
+        getGeneratePdfErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: { detail: "Choose a song" }
+        })),
+        "The PDF request was rejected. Choose a song."
+    )
+    assert.equal(
+        getGeneratePdfErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: "<script>"
+        })),
+        "The PDF request was rejected. Check the selected songs."
+    )
+    assert.equal(
+        getGeneratePdfErrorMessage(new ApiError("offline", { status: null })),
+        "Could not generate the PDF. It may have been created; try again."
+    )
+    assert.equal(
+        getGeneratePdfErrorMessage(new ApiError("server", { status: 503 })),
+        "Could not generate the PDF. Try again."
+    )
+    assert.equal(
+        getDownloadPdfErrorMessage(new ApiError("offline", { status: null })),
+        "Could not reach the SongBook API. " +
+            "Try downloading the PDF again."
+    )
+    assert.equal(
+        getDownloadPdfErrorMessage(new ApiError("missing", { status: 404 })),
+        "Could not download the PDF. Try again."
+    )
+})
+
+test("collaborator load and mutation errors are actionable and filter unsafe details", () => {
+    assert.equal(
+        getLoadCollaboratorsErrorMessage(
+            new ApiError("offline", { status: null })
+        ),
+        "Could not reach the SongBook API. " +
+            "Collaborators could not be loaded. Try again."
+    )
+    assert.equal(
+        getLoadCollaboratorsErrorMessage(
+            new ApiError("server", { status: 503 })
+        ),
+        "The server could not load collaborators. Try again."
+    )
+    assert.equal(
+        getLoadCollaboratorsErrorMessage(
+            new ApiError("bad request", { status: 400 })
+        ),
+        "Could not load collaborators. Try again."
+    )
+    assert.equal(
+        getSongBookAccessErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: { detail: "The user must be registered" }
+        })),
+        "The collaborator access request was rejected. " +
+            "The user must be registered."
+    )
+    assert.equal(
+        getSongBookAccessErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: "<private>"
+        })),
+        "The collaborator access request was rejected."
+    )
+    assert.equal(
+        getSongBookAccessErrorMessage(
+            new ApiError("offline", { status: null })
+        ),
+        "Could not reach the SongBook API. " +
+            "The collaborator change was not saved."
+    )
+    assert.equal(
+        getSongBookAccessErrorMessage(
+            new ApiError("forbidden", { status: 403 })
+        ),
+        "Could not update collaborator access. Try again."
     )
 })
 

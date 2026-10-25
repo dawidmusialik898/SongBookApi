@@ -323,7 +323,15 @@ class FakeElement extends FakeNode {
             return event
         }
 
-        if (this.tagName === "A" && this.href.startsWith("#")) {
+        if (
+            this.tagName === "A" &&
+            this.getAttribute("download") !== null
+        ) {
+            this.ownerDocument.appBrowser.downloads.push({
+                href: this.getAttribute("href"),
+                filename: this.getAttribute("download")
+            })
+        } else if (this.tagName === "A" && this.href.startsWith("#")) {
             await this.ownerDocument.appBrowser.navigate(this.href)
         } else if (
             this.tagName === "BUTTON" &&
@@ -573,6 +581,7 @@ export function installAppBrowser({
     const document = new FakeDocument()
     const location = new URL(initialUrl)
     const dialogs = []
+    const downloads = []
     const dialogAnswers = []
     const windowListeners = new Map()
     const historyEntries = [{ state: null, url: location.href }]
@@ -745,6 +754,7 @@ export function installAppBrowser({
         api,
         document,
         dialogs,
+        downloads,
         dialogAnswers,
         history,
         location,

@@ -23,7 +23,7 @@ Update this table at the end of every phase.
 | 3 | App shell, router, auth, library | Complete | b97613c | Client 78/78; server 99/99; Chrome smoke passed for auth, confirmation, book creation, Back/Forward, sign-out, and reset links. Legacy `main.js`: 7d41250. |
 | 4 | Book and song screens | Complete | 8ca0f7e | Client 103/103; server 99/99. Book/song screens, search, snapshot restore, pager, and navigation-race coverage. |
 | 5 | Song editor with inline chords | Complete | ca56bce | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
-| 6 | PDF and share screens | Not started | | |
+| 6 | PDF and share screens | Complete | | PDF and share screens implemented; client suite 156/156. |
 | 7 | User management screen | Not started | | |
 | 8 | Polish, cleanup, documentation | Not started | | |
 
@@ -1589,10 +1589,11 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 6: PDF and share screens
 
-- [ ] `ui/pdf.js` (ported helpers), `pdfListScreen`, and `pdfNewScreen`
+- [x] `ui/pdf.js` (ported helpers), `pdfListScreen`, and `pdfNewScreen`
       (5.5.7, 5.5.8).
-- [ ] `shareScreen` (5.5.9).
-- [ ] Tests: `integration/pdf-screens`, `integration/share-screen`.
+- [x] `shareScreen` (5.5.9).
+- [x] Test: `integration/pdf-screens`.
+- [x] Test: `integration/share-screen`.
 - Acceptance: as owner, create whole-book and chosen-song PDFs, download
   them, and see the outdated badge after a song edit. Share with a second
   account as Reader, change it to Editor, and remove it. As that account,

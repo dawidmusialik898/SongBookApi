@@ -22,7 +22,7 @@ Update this table at the end of every phase.
 | 2 | Test infrastructure and API modules | Complete | 6d3ffe4 | Client 115/115; server 99/99. Legacy UI tests still pass. |
 | 3 | App shell, router, auth, library | Complete | b97613c | Client 78/78; server 99/99; Chrome smoke passed for auth, confirmation, book creation, Back/Forward, sign-out, and reset links. Legacy `main.js`: 7d41250. |
 | 4 | Book and song screens | Complete | 8ca0f7e | Client 103/103; server 99/99. Book/song screens, search, snapshot restore, pager, and navigation-race coverage. |
-| 5 | Song editor with inline chords | Complete | | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
+| 5 | Song editor with inline chords | Complete | ca56bce | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
 | 6 | PDF and share screens | Not started | | |
 | 7 | User management screen | Not started | | |
 | 8 | Polish, cleanup, documentation | Not started | | |

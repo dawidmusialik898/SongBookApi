@@ -25,7 +25,7 @@ Update this table at the end of every phase.
 | 5 | Song editor with inline chords | Complete | ca56bce | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
 | 6 | PDF and share screens | Complete | 167e405 | PDF and share screens implemented; client suite 156/156. |
 | 7 | User management screen | Complete | 95a6ad2 | Moderator/SuperUser management, permission matrix, and privilege-revocation handling; client 168/168, server 99/99. |
-| 8 | Polish, cleanup, documentation | Complete | | Client 176/176; server 99/99. Gap pass: pager link IDs, register link text, part-name placeholder, refresh-free moderation and library messages, and tests for the aborted song request, `/auth/me` failure, and focus after dialogs and deletions. Chrome 155 QA at 1280, 768, 375, 320, and 160 px: no horizontal page scroll, brand visible, keyboard focus kept through menus, dialogs, list reloads, and busy requests; no console or CSP errors. Actual Narrator speech was not verified. |
+| 8 | Polish, cleanup, documentation | Complete | 92cbb0d | Client 176/176; server 99/99. Gap pass: pager link IDs, register link text, part-name placeholder, refresh-free moderation and library messages, and tests for the aborted song request, `/auth/me` failure, and focus after dialogs and deletions. Chrome 155 QA at 1280, 768, 375, 320, and 160 px: no horizontal page scroll, brand visible, keyboard focus kept through menus, dialogs, list reloads, and busy requests; no console or CSP errors. Actual Narrator speech was not verified. |
 
 ### Recorded deviations
 

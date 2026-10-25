@@ -3,7 +3,6 @@ import test from "node:test"
 
 import { ApiError } from "../../src/httpClient.js"
 import {
-    fetchAvailablePage,
     pageUrl,
     readPage
 } from "../../src/pagination.js"
@@ -40,20 +39,4 @@ test("pagination validates page numbers and response shapes", () => {
     ]) {
         assert.throws(() => readPage(invalid, 2), ApiError)
     }
-})
-
-test("an empty last page falls back once to its predecessor", async () => {
-    const requested = []
-    const result = await fetchAvailablePage(page => {
-        requested.push(page)
-        return {
-            items: page === 2 ? [] : [{ id: "remaining" }],
-            page,
-            hasNext: false
-        }
-    }, 2)
-
-    assert.deepEqual(requested, [2, 1])
-    assert.equal(result.page, 1)
-    assert.equal(result.items[0].id, "remaining")
 })

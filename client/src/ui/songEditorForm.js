@@ -213,7 +213,8 @@ export function createSongEditorForm(ctx, {
             const nameInput = h("input", {
                 id: `part-name-${part.key}`,
                 type: "text",
-                dataset: { partField: "name", partKey: part.key }
+                dataset: { partField: "name", partKey: part.key },
+                attrs: { placeholder: "e.g. Verse 1" }
             })
             nameInput.value = part.name
             nameInput.addEventListener("input", () =>

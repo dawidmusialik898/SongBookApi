@@ -76,6 +76,17 @@ test("parses chord placement, escapes, line breaks, and Unicode anchors", () => 
 })
 
 test("reports every notation error on its line", () => {
+    for (const [notation, message] of [
+        ["[G", 'Missing "]" after "[".'],
+        ["[]x", 'Empty chord "[]".']
+    ]) {
+        assert.deepEqual(
+            parseChordNotation(notation).errors,
+            [{ line: 1, message }],
+            notation
+        )
+    }
+
     const parsed = parseChordNotation(
         `[G\n[]\n[${"x".repeat(65)}]\n[A[B]`
     )

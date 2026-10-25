@@ -76,6 +76,10 @@ test("create screen saves inline chords and opens the created song", async () =>
 
         const partKey = browser.document.getElementById("parts-editor")
             .children[0].dataset.partKey
+        assert.equal(
+            partField(browser, partKey, "name").getAttribute("placeholder"),
+            "e.g. Verse 1"
+        )
         await partField(browser, partKey, "name").input("Verse 1")
         const textarea = partField(browser, partKey, "text")
         await textarea.input("[G]Amazing [D7]grace")
@@ -490,13 +494,19 @@ test("save failures retain the editor values and show safe API details", async (
         await title.input("Keep this title")
         await partName.input("Verse")
         await lyrics.input("[G]Keep these lyrics")
-        await browser.document.getElementById(
-            "song-editor-form"
-        ).submit()
+        const saveButton = browser.document.getElementById(
+            "editor-save-button"
+        )
+        saveButton.focus()
+        await saveButton.click()
 
         assert.equal(title.value, "Keep this title")
         assert.equal(partName.value, "Verse")
         assert.equal(lyrics.value, "[G]Keep these lyrics")
+        assert.ok(
+            browser.document.activeElement === saveButton,
+            "a failed save keeps focus on Save"
+        )
         assert.equal(
             browser.text("editor-status"),
             "The API rejected the submitted song. The title is invalid. " +

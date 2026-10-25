@@ -5,7 +5,7 @@ import {
     getSongBookPdfs
 } from "../songBooksApi.js"
 import { readPage } from "../pagination.js"
-import { findActionTarget, h } from "../ui/dom.js"
+import { findActionTarget, h, hasLostFocus } from "../ui/dom.js"
 import {
     getDownloadPdfErrorMessage,
     getLoadPdfsErrorMessage
@@ -316,6 +316,9 @@ export async function renderPdfListScreen(ctx) {
             ctx.status.show("error", getDownloadPdfErrorMessage(error))
         } finally {
             setDownloading(false)
+            if (isRequestCurrent(sessionGeneration) && hasLostFocus()) {
+                button.focus()
+            }
         }
     }
 

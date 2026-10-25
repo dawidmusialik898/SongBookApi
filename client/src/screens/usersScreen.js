@@ -6,7 +6,7 @@ import {
     setManagedUserRole
 } from "../moderationApi.js"
 import { readPage } from "../pagination.js"
-import { h } from "../ui/dom.js"
+import { h, hasLostFocus } from "../ui/dom.js"
 import {
     getLoadUsersErrorMessage,
     getManagedUserActionErrorMessage
@@ -318,6 +318,9 @@ export async function renderUsersScreen(ctx) {
         } finally {
             if (ctx.isCurrent()) {
                 setMutationBusy(false)
+                if (hasLostFocus()) {
+                    (rowMenus.get(user.id)?.button ?? heading).focus()
+                }
             }
         }
     }
@@ -346,7 +349,7 @@ export async function renderUsersScreen(ctx) {
             if (ctx.isCurrent()) {
                 ctx.status.show(
                     "error",
-                    "This account no longer exists. Refresh users."
+                    "This account no longer exists."
                 )
             }
             return

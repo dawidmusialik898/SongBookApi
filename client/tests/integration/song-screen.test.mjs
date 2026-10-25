@@ -90,9 +90,12 @@ test("song screen formats metadata, chords and pager navigation", async () => {
         assert.equal(firstPart.children[0].textContent, "Verse 1")
         assert.match(firstPart.children[1].className, /chorded-text/)
 
-        const nextLink = browser.document.getElementById(
-            "song-pager"
-        ).children[0]
+        const nextLink = browser.document.getElementById("next-song-link")
+        assert.equal(
+            browser.document.getElementById("previous-song-link"),
+            null
+        )
+        assert.equal(nextLink.textContent, "Be Thou My Vision ›")
         assert.equal(
             nextLink.getAttribute("aria-label"),
             "Next song: Be Thou My Vision"
@@ -117,6 +120,15 @@ test("song screen formats metadata, chords and pager navigation", async () => {
                 .getAttribute("aria-pressed"),
             "false"
         )
+        const previousLink = browser.document.getElementById(
+            "previous-song-link"
+        )
+        assert.equal(previousLink.textContent, "‹ Amazing Grace")
+        assert.equal(
+            previousLink.getAttribute("aria-label"),
+            "Previous song: Amazing Grace"
+        )
+        assert.equal(browser.document.getElementById("next-song-link"), null)
 
         await browser.back()
         assert.equal(browser.screen(), "book")

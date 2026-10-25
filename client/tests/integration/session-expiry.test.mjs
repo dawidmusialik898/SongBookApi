@@ -46,6 +46,65 @@ test("a private-request 401 removes the library and shows the ended-session mess
     }
 })
 
+test("a failed session check hides private data behind the unavailable view", async () => {
+    const api = createFakeApi()
+    api.seed.account("moderator@example.com", { role: "moderator" })
+    const privateUserId = api.seed.account("private-user@example.com")
+    api.signIn("moderator@example.com")
+    const { app, browser } = createAppHarness(api, {
+        initialUrl: "https://localhost/#/users"
+    })
+    try {
+        await app.ready
+        assert.equal(browser.screen(), "users")
+        assert.match(browser.text("user-list"), /private-user@example\.com/)
+
+        const restoreSession = api.intercept(request => {
+            if (request.path === "/auth/me") {
+                return { status: 503, body: { title: "Unavailable" } }
+            }
+            if (
+                request.method !== "GET" &&
+                request.path.startsWith("/admin/users/")
+            ) {
+                return { status: 403, body: { title: "Forbidden" } }
+            }
+            return undefined
+        })
+        const menuButton = browser.document.getElementById(
+            `user-menu-button-${encodeURIComponent(privateUserId)}`
+        )
+        await menuButton.click()
+        const banItem = [...browser.document.getElementById(
+            `user-menu-panel-${encodeURIComponent(privateUserId)}`
+        ).children].find(item => item.dataset.action === "ban-user")
+        const ban = banItem.click()
+        await browser.settle()
+        await browser.document.getElementById("dialog-confirm").click()
+        await ban
+
+        assert.equal(browser.screen(), "unavailable")
+        assert.equal(app.context.session.state.status, "unavailable")
+        assert.equal(browser.document.getElementById("user-list"), null)
+        assert.doesNotMatch(
+            browser.text("screen"),
+            /private-user@example\.com/
+        )
+        assert.equal(
+            browser.document.getElementById("account-menu").hidden,
+            true
+        )
+
+        restoreSession()
+        await browser.document.getElementById("retry-session-button")
+            .click()
+        assert.equal(browser.screen(), "users")
+        assert.match(browser.text("user-list"), /private-user@example\.com/)
+    } finally {
+        browser.restore()
+    }
+})
+
 test("an editor save 401 keeps a draft that the same account can restore", async () => {
     const api = createFakeApi()
     api.seed.account("owner@example.com")

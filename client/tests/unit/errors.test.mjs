@@ -84,13 +84,13 @@ test("song-book load errors distinguish network, server, and other failures", ()
         getLoadSongBooksErrorMessage(new ApiError("offline", {
             status: null
         })),
-        "Could not reach the SongBook API. Your song books could not be refreshed."
+        "Could not reach the SongBook API. Your song books could not be loaded. Try again."
     )
     assert.equal(
         getLoadSongBooksErrorMessage(new ApiError("server", {
             status: 503
-        }), true),
-        "The server could not load song books. Try again. The displayed list may be out of date."
+        })),
+        "The server could not load song books. Try again."
     )
     for (const status of [400, 401, 403, 404]) {
         assert.equal(
@@ -405,7 +405,7 @@ test("user-management load and mutation errors are actionable", () => {
             status: null
         })),
         "Could not reach the SongBook API. " +
-            "The account may have been updated; reload users before retrying."
+            "The account may have been updated. Try again."
     )
     assert.equal(
         getManagedUserActionErrorMessage(new ApiError("server", {

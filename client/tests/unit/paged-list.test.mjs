@@ -7,7 +7,13 @@ import { createPagedList } from "../../src/ui/pagedList.js"
 import { createFakeApi } from "../helpers/fakeApi.mjs"
 import { installAppBrowser } from "../helpers/testBrowser.mjs"
 
-function createList(fetchPage, { signal } = {}) {
+function createList(fetchPage, {
+    signal,
+    renderItem = item => h("li", {
+        dataset: { itemId: item.id },
+        text: item.name
+    })
+} = {}) {
     const browser = installAppBrowser({ api: createFakeApi() })
     const list = h("ul", {})
     const stateElement = h("p", {})
@@ -23,10 +29,7 @@ function createList(fetchPage, { signal } = {}) {
         stateElement,
         moreButton,
         fetchPage,
-        renderItem: item => h("li", {
-            dataset: { itemId: item.id },
-            text: item.name
-        }),
+        renderItem,
         getKey: item => item.id,
         messages: {
             loading: "Loading…",
@@ -115,6 +118,7 @@ test("later-page errors keep rows and allow retry", async () => {
     try {
         await harness.pagedList.reload()
         const row = harness.list.children[0]
+        harness.moreButton.focus()
         await harness.moreButton.click()
         assert.equal(harness.list.children.length, 1)
         assert.equal(harness.list.children[0], row)
@@ -123,6 +127,10 @@ test("later-page errors keep rows and allow retry", async () => {
             "Couldn't load more. Try again."
         )
         assert.equal(harness.moreButton.disabled, false)
+        assert.ok(
+            harness.browser.document.activeElement === harness.moreButton,
+            "a failed page keeps focus on Show more"
+        )
 
         failMore = false
         await harness.moreButton.click()
@@ -191,6 +199,43 @@ test("restoring an empty first-page snapshot shows the empty message", () => {
         })
         assert.equal(harness.stateElement.textContent, "No items.")
         assert.equal(harness.moreButton.hidden, true)
+    } finally {
+        harness.browser.restore()
+    }
+})
+
+test("show more hands focus to the first new row when it hides itself", async () => {
+    const harness = createList(async page => page === 1
+        ? {
+            items: [{ id: "one", name: "One" }],
+            page: 1,
+            hasNext: true
+        }
+        : {
+            items: [
+                { id: "two", name: "Two" },
+                { id: "three", name: "Three" }
+            ],
+            page: 2,
+            hasNext: false
+        }, {
+        renderItem: item => h("li", {},
+            h("a", {
+                attrs: { href: `#/items/${item.id}` },
+                text: item.name
+            }))
+    })
+    try {
+        await harness.pagedList.reload()
+        harness.moreButton.focus()
+        await harness.moreButton.click()
+
+        assert.equal(harness.moreButton.hidden, true)
+        assert.ok(
+            harness.browser.document.activeElement ===
+                harness.list.children[1].children[0],
+            "focus moves to the first new row"
+        )
     } finally {
         harness.browser.restore()
     }

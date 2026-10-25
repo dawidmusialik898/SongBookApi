@@ -287,10 +287,15 @@ test("share add validation and unregistered accounts show inline errors", async 
         )
 
         await emailInput.input("unknown@example.com")
+        browser.document.getElementById("share-submit").focus()
         await form.submit()
         assert.equal(
             browser.text("share-form-error"),
             "No registered account was found for that email."
+        )
+        assert.ok(
+            browser.document.activeElement === emailInput,
+            "a rejected collaborator returns focus to the email field"
         )
         assert.equal(api.requests.some(request =>
             request.path === `/songbooks/${bookId}` &&
@@ -493,6 +498,71 @@ test("collaborator removal asks for confirmation, can be cancelled, and succeeds
             request.method === "DELETE" &&
             request.path === `/songbooks/${bookId}/access/${accessId}`
         ), true)
+    } finally {
+        browser.restore()
+    }
+})
+
+test("access changes and stale removals keep keyboard focus on the share screen", async () => {
+    const api = createFakeApi()
+    api.seed.account("owner@example.com")
+    api.seed.account("member@example.com")
+    api.seed.account("former@example.com")
+    const bookId = api.seed.book({
+        owner: "owner@example.com",
+        name: "Shared Songs"
+    })
+    const memberAccessId = api.seed.access(
+        bookId,
+        "member@example.com",
+        "reader"
+    )
+    const formerAccessId = api.seed.access(
+        bookId,
+        "former@example.com",
+        "reader"
+    )
+    api.signIn("owner@example.com")
+    const { app, browser } = createAppHarness(api, {
+        initialUrl: `https://localhost/#/books/${bookId}/share`
+    })
+
+    try {
+        await app.ready
+        const accessSelect = browser.document.getElementById(
+            `collaborator-access-${memberAccessId}`
+        )
+        accessSelect.focus()
+        await accessSelect.change("editor")
+        assert.equal(browser.text("app-status-message"), "Access updated.")
+        const updatedSelect = browser.document.getElementById(
+            `collaborator-access-${memberAccessId}`
+        )
+        assert.equal(updatedSelect.value, "editor")
+        assert.ok(
+            browser.document.activeElement === updatedSelect,
+            "focus returns to the re-rendered access select"
+        )
+
+        api.intercept(request =>
+            request.method === "DELETE" &&
+            request.path === `/songbooks/${bookId}/access/${formerAccessId}`
+                ? { status: 404, body: null }
+                : undefined
+        )
+        const removeButton = findCollaboratorRow(browser, formerAccessId)
+            .children[1].children[2]
+        removeButton.focus()
+        const removal = removeButton.click()
+        await browser.settle()
+        await browser.document.getElementById("dialog-confirm").click()
+        await removal
+        assert.equal(
+            browser.text("app-status-message"),
+            "That collaborator entry was already removed."
+        )
+        assert.equal(findCollaboratorRow(browser, formerAccessId), undefined)
+        assert.equal(browser.document.activeElement.id, "share-email")
     } finally {
         browser.restore()
     }

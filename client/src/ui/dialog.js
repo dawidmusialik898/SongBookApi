@@ -28,10 +28,15 @@ export function createDialogs(dialog) {
                     : null
         )
 
-        const focusTarget = isInDocument(current.opener)
-            ? current.opener
-            : document.getElementById("screen-heading")
-        focusTarget?.focus()
+        const opener = current.opener === document.body
+            ? null
+            : current.opener
+        if (isInDocument(opener)) {
+            opener.focus()
+        }
+        if (opener === null || document.activeElement !== opener) {
+            document.getElementById("screen-heading")?.focus()
+        }
     })
 
     function confirmDialog({
@@ -216,6 +221,9 @@ export function createDialogs(dialog) {
             } finally {
                 if (active === current) {
                     setBusy(current, false)
+                    if (!dialog.contains(document.activeElement)) {
+                        current.input.focus()
+                    }
                 }
             }
         })

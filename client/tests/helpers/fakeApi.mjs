@@ -1052,13 +1052,19 @@ async function normalizeRequest(value) {
         }
     }
 
-    return {
+    const request = {
         method: String(value.method ?? "GET").toUpperCase(),
         path: String(value.path ?? url.pathname),
         query: normalizeQuery(value.query, url.searchParams),
         body: body ?? null,
         headers: normalizeHeaders(value.headers)
     }
+    // Interceptors can observe aborts; recorded request shapes stay unchanged.
+    Object.defineProperty(request, "signal", {
+        value: value.signal ?? null,
+        enumerable: false
+    })
+    return request
 }
 
 function normalizeQuery(query, fallback) {

@@ -1,9 +1,8 @@
 import { resetAntiforgeryToken } from "./httpClient.js"
-import { handleError } from "./ui/errors.js"
+import { handleError } from "./errorHandler.js"
 import { createDialogs } from "./ui/dialog.js"
 import { createSession } from "./session.js"
 import { createRouter } from "./router.js"
-import { handleAuthQuery } from "./screens/authScreen.js"
 import { createShell } from "./ui/shell.js"
 import { createStatus } from "./ui/status.js"
 import { createDrafts } from "./drafts.js"
@@ -119,4 +118,58 @@ export function startApp() {
         navigate: ctx.router.navigate,
         context: ctx
     }
+}
+
+function handleAuthQuery(ctx) {
+    const currentUrl = new URL(window.location.href)
+    const authResult = currentUrl.searchParams.get("auth")
+    let notice = null
+
+    if (authResult === "confirmed") {
+        notice = {
+            type: "success",
+            message: "Email confirmed. You can now sign in."
+        }
+    } else if (authResult === "confirmation-failed") {
+        notice = {
+            type: "error",
+            message: "The confirmation link is invalid or expired."
+        }
+    } else if (authResult === "reset-password") {
+        const email = currentUrl.searchParams.get("email")
+        const code = currentUrl.searchParams.get("code")
+        if (
+            typeof email === "string" &&
+            email !== "" &&
+            typeof code === "string" &&
+            code !== ""
+        ) {
+            ctx.auth.resetCredentials = { email, code }
+            ctx.auth.emailPrefill = email
+            ctx.auth.view = "reset-password"
+            ctx.auth.forceAuth = true
+        } else {
+            notice = {
+                type: "error",
+                message: "The password reset link is invalid or incomplete."
+            }
+        }
+    }
+
+    if (authResult !== null) {
+        currentUrl.searchParams.delete("auth")
+        currentUrl.searchParams.delete("email")
+        currentUrl.searchParams.delete("code")
+        const search = currentUrl.searchParams.toString()
+        const sanitizedUrl = currentUrl.pathname +
+            (search === "" ? "" : `?${search}`) +
+            currentUrl.hash
+        window.history.replaceState(
+            window.history.state,
+            "",
+            sanitizedUrl
+        )
+    }
+
+    ctx.pendingStatus = notice
 }

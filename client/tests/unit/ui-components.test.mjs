@@ -10,6 +10,10 @@ import { installAppBrowser } from "../helpers/testBrowser.mjs"
 test("status errors are assertive, actionable, and dismissible", async () => {
     const browser = installAppBrowser({ api: createFakeApi() })
     try {
+        const heading = browser.document.createElement("h1")
+        heading.setAttribute("id", "screen-heading")
+        heading.setAttribute("tabindex", "-1")
+        browser.document.getElementById("screen").appendChild(heading)
         const status = createStatus(
             browser.document.getElementById("app-status")
         )
@@ -25,10 +29,16 @@ test("status errors are assertive, actionable, and dismissible", async () => {
             browser.document.getElementById("app-status-action").href,
             "#/"
         )
-        await browser.document.getElementById("app-status-dismiss").click()
+        const dismiss = browser.document.getElementById("app-status-dismiss")
+        dismiss.focus()
+        await dismiss.click()
         assert.equal(element.textContent, "")
         assert.equal(element.getAttribute("role"), "status")
         assert.equal(element.getAttribute("aria-live"), "polite")
+        assert.ok(
+            browser.document.activeElement === heading,
+            "dismissing moves focus to the screen heading"
+        )
     } finally {
         browser.restore()
     }
@@ -135,6 +145,11 @@ test("prompt dialogs keep inline errors and return trimmed values", async () => 
             browser.text("dialog-error"),
             "Choose another name."
         )
+        assert.ok(
+            browser.document.activeElement ===
+                browser.document.getElementById("dialog-input"),
+            "a rejected prompt returns focus to its input"
+        )
         assert.equal(
             browser.document.getElementById("app-dialog").open,
             true
@@ -187,6 +202,100 @@ test("menus open, close on activation, and return focus on Escape", async () => 
         assert.equal(menu.panel.hidden, true)
         assert.equal(menu.button.getAttribute("aria-expanded"), "false")
         assert.equal(browser.document.activeElement, menu.button)
+    } finally {
+        browser.restore()
+    }
+})
+
+test("menu actions run from the menu button so their dialogs return focus to it", async () => {
+    const browser = installAppBrowser({ api: createFakeApi() })
+    try {
+        const dialogs = createDialogs(
+            browser.document.getElementById("app-dialog")
+        )
+        let focusedDuringAction = null
+        const menu = createMenu({
+            label: "⋯",
+            accessibleName: "More actions",
+            id: "focus-menu-panel",
+            items: [{
+                kind: "button",
+                text: "Rename",
+                action: "rename",
+                onSelect() {
+                    focusedDuringAction = browser.document.activeElement
+                    return dialogs.confirmDialog({
+                        title: "Rename?",
+                        message: "Choose a new name.",
+                        confirmLabel: "Rename"
+                    })
+                }
+            }]
+        })
+        browser.document.getElementById("screen").appendChild(menu.root)
+
+        await menu.button.click()
+        browser.queueDialogAnswer(false)
+        await menu.panel.children[0].click()
+        await browser.settle()
+
+        assert.equal(menu.panel.hidden, true)
+        assert.ok(
+            focusedDuringAction === menu.button,
+            "menu actions start with focus on the menu button"
+        )
+        assert.ok(
+            browser.document.activeElement === menu.button,
+            "closing the dialog returns focus to the menu button"
+        )
+    } finally {
+        browser.restore()
+    }
+})
+
+test("dialogs focus the screen heading when the opener cannot take focus", async () => {
+    const browser = installAppBrowser({ api: createFakeApi() })
+    try {
+        const screen = browser.document.getElementById("screen")
+        const heading = browser.document.createElement("h1")
+        heading.setAttribute("id", "screen-heading")
+        heading.setAttribute("tabindex", "-1")
+        const panel = browser.document.createElement("div")
+        const opener = browser.document.createElement("button")
+        panel.appendChild(opener)
+        screen.appendChild(heading)
+        screen.appendChild(panel)
+        const dialogs = createDialogs(
+            browser.document.getElementById("app-dialog")
+        )
+
+        opener.focus()
+        panel.hidden = true
+        browser.queueDialogAnswer(false)
+        assert.equal(await dialogs.confirmDialog({
+            title: "Delete?",
+            message: "This cannot be undone.",
+            confirmLabel: "Delete"
+        }), false)
+        assert.ok(
+            browser.document.activeElement === heading,
+            "a hidden opener falls back to the heading"
+        )
+
+        panel.hidden = false
+        opener.focus()
+        const removal = dialogs.confirmDialog({
+            title: "Delete?",
+            message: "This cannot be undone.",
+            confirmLabel: "Delete"
+        })
+        opener.remove()
+        await browser.document.getElementById("dialog-confirm").click()
+        assert.equal(await removal, true)
+        assert.ok(
+            browser.document.activeElement === heading,
+            "a removed opener falls back to the heading"
+        )
     } finally {
         browser.restore()
     }

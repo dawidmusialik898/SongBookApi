@@ -1,5 +1,9 @@
 import { readPage } from "../pagination.js"
-import { h } from "./dom.js"
+import { findFirstControl, h, hasLostFocus } from "./dom.js"
+
+function focusIsLostOrOn(element) {
+    return hasLostFocus() || document.activeElement === element
+}
 
 export function createPagedList({
     list,
@@ -58,6 +62,8 @@ export function createPagedList({
         if (signal !== undefined) {
             signal.addEventListener("abort", onParentAbort, { once: true })
         }
+        // Disabling the focused button drops focus, so remember it first.
+        const restoreFocus = document.activeElement === moreButton
         activeController = controller
         loading = true
         list.setAttribute("aria-busy", "true")
@@ -103,6 +109,11 @@ export function createPagedList({
             hasNext = result.hasNext
             moreButton.hidden = !hasNext
             moreButton.disabled = false
+            if (restoreFocus && focusIsLostOrOn(moreButton)) {
+                (moreButton.hidden
+                    ? findFirstControl(rows[0])
+                    : moreButton)?.focus()
+            }
 
             if (currentItems.length === 0) {
                 const empty = typeof messages.empty === "function"
@@ -133,6 +144,13 @@ export function createPagedList({
                 moreButton.hidden = false
             }
             moreButton.disabled = false
+            if (
+                restoreFocus &&
+                !moreButton.hidden &&
+                focusIsLostOrOn(moreButton)
+            ) {
+                moreButton.focus()
+            }
         } finally {
             if (signal !== undefined) {
                 signal.removeEventListener("abort", onParentAbort)

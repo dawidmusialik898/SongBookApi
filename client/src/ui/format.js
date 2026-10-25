@@ -13,27 +13,6 @@ export function normalizeAccessLevel(value) {
         : null
 }
 
-export function formatAccessLevel(value) {
-    const normalized = normalizeAccessLevel(value)
-    if (normalized === null) {
-        return "Unknown access"
-    }
-
-    return normalized[0].toUpperCase() + normalized.slice(1)
-}
-
-export function formatSongLabel(song) {
-    const parts = []
-    if (hasDisplayValue(song.number)) {
-        parts.push(`${song.number}.`)
-    }
-    parts.push(displayValue(song.title, "Untitled song"))
-    if (hasDisplayValue(song.author)) {
-        parts.push(`— ${song.author}`)
-    }
-    return parts.join(" ")
-}
-
 export function formatCount(value, singular) {
     const count = Number.isFinite(Number(value))
         ? Number(value)
@@ -46,10 +25,4 @@ export function formatDate(value) {
     return Number.isNaN(date.getTime())
         ? ""
         : date.toLocaleString()
-}
-
-function hasDisplayValue(value) {
-    return value !== null &&
-        value !== undefined &&
-        String(value).trim() !== ""
 }

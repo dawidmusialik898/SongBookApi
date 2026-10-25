@@ -4,7 +4,7 @@ import {
     getSongBook
 } from "../songBooksApi.js"
 import { getSongs } from "../songsApi.js"
-import { h } from "../ui/dom.js"
+import { h, hasLostFocus } from "../ui/dom.js"
 import {
     getGeneratePdfErrorMessage,
     getLoadSongsErrorMessage
@@ -387,6 +387,9 @@ export async function renderPdfNewScreen(ctx) {
         } finally {
             isGenerating = false
             createButton.disabled = !ctx.isCurrent()
+            if (ctx.isCurrent() && hasLostFocus()) {
+                createButton.focus()
+            }
         }
     }
 

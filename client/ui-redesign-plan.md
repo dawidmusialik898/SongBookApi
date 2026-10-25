@@ -1,6 +1,6 @@
 # UI Redesign Implementation Plan
 
-> Status: in progress. Prepared 2026-10-24.
+> Status: complete. Prepared 2026-10-24.
 >
 > Baseline: branch `feature/copilot-experimentation`, commit `5b47c43`. The
 > worktree also contained uncommitted work: server PDF font embedding and a
@@ -23,9 +23,34 @@ Update this table at the end of every phase.
 | 3 | App shell, router, auth, library | Complete | b97613c | Client 78/78; server 99/99; Chrome smoke passed for auth, confirmation, book creation, Back/Forward, sign-out, and reset links. Legacy `main.js`: 7d41250. |
 | 4 | Book and song screens | Complete | 8ca0f7e | Client 103/103; server 99/99. Book/song screens, search, snapshot restore, pager, and navigation-race coverage. |
 | 5 | Song editor with inline chords | Complete | ca56bce | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
-| 6 | PDF and share screens | Complete | | PDF and share screens implemented; client suite 156/156. |
-| 7 | User management screen | Complete | | Moderator/SuperUser management, permission matrix, and privilege-revocation handling; client 168/168, server 99/99. |
-| 8 | Polish, cleanup, documentation | Not started | | |
+| 6 | PDF and share screens | Complete | 167e405 | PDF and share screens implemented; client suite 156/156. |
+| 7 | User management screen | Complete | 95a6ad2 | Moderator/SuperUser management, permission matrix, and privilege-revocation handling; client 168/168, server 99/99. |
+| 8 | Polish, cleanup, documentation | Complete | | Client 176/176; server 99/99. Gap pass: pager link IDs, register link text, part-name placeholder, refresh-free moderation and library messages, and tests for the aborted song request, `/auth/me` failure, and focus after dialogs and deletions. Chrome 155 QA at 1280, 768, 375, 320, and 160 px: no horizontal page scroll, brand visible, keyboard focus kept through menus, dialogs, list reloads, and busy requests; no console or CSP errors. Actual Narrator speech was not verified. |
+
+### Recorded deviations
+
+- Startup renders the loading view before `session.load()` settles (5.5.2),
+  so `ready` waits for that render and the session load before
+  `router.start()`; 7.2 step 7 sequences only the load.
+- The router enforces the signed-in and Moderator routes. Book roles are
+  known only after `GET /songbooks/{id}`, so each book screen performs the
+  replace navigation and message from 5.2 and 5.7.
+- Below 40rem the nearest-ancestor link moves to a second app-bar row so the
+  brand stays visible (5.4). Below 20rem the account button shows "Menu"
+  instead of the truncated email.
+- Six screen modules have 421-475 lines (`bookScreen`, `shareScreen`,
+  `songScreen`, `usersScreen`, `songEditorController`, `pdfNewScreen`),
+  above the aim of about 400 in section 3. Routing, error handling, and the
+  auth and share helpers were split into `routes.js`, `errorHandler.js`,
+  `ui/authForm.js`, and `ui/shareForm.js` (7.1).
+- Chrome blurs a focused control once it is disabled or hidden, so focus
+  handling goes beyond 5.6: menu actions start from the menu button, dialogs
+  fall back to `#screen-heading` when the opener cannot take focus, busy
+  forms and lists restore focus after their requests, "Show more" focuses
+  the first new row when it hides itself, and Dismiss focuses
+  `#screen-heading`. The fake DOM models these browser rules.
+- Manual QA item 4 (section 12) was checked in Chrome's accessibility tree,
+  not with Narrator speech.
 
 ## 1. Start here
 
@@ -869,8 +894,10 @@ client/
     buttons.css           button variants (kept)
   src/
     main.js               bootstrap only
-    app.js                startApp(): creates context, installs listeners, starts router
-    router.js             route table, matching, href(), navigate(), goBackOr(), rendering
+    app.js                startApp(): creates context, handles ?auth= links, installs listeners, starts router
+    routes.js             route table, parseLocation(), matching, href()
+    router.js             navigate(), goBackOr(), history tracking, rendering
+    errorHandler.js       ctx.handleError(): lost access, missing songs, forbidden mutations (7.6)
     session.js            auth state, load, sign-out, session-ended flow
     drafts.js             in-memory editor drafts
     chordNotation.js      inline [Chord] parse/serialize
@@ -878,15 +905,17 @@ client/
     chords.js             isChordAnchor, renderChordedText (kept)
     httpClient.js  pagination.js  songsApi.js  songBooksApi.js  authApi.js  moderationApi.js
     ui/
-      dom.js              h(), findActionTarget(), isInDocument(), later()
+      dom.js              h(), findActionTarget(), isInDocument(), hasLostFocus(), findFirstControl(), later()
+      authForm.js         auth form fields, busy submit with focus restore, view links
       songEditorForm.js   focus-mode editor form and part controls
+      shareForm.js        share form, collaborator rows, collaborator list
       shell.js            app bar: breadcrumb, account menu, focus mode
       status.js           status region (5.6.3)
       dialog.js           confirmDialog(), promptDialog() (5.6.1)
       menu.js             createMenu() (5.6.2)
       pagedList.js        "Show more" lists (7.7)
       errors.js           ApiError -> user message (ported from main.js)
-      format.js           displayValue, formatAccessLevel, song labels, counts, dates
+      format.js           displayValue, normalizeAccessLevel, counts, dates
       pdf.js              readPdfMetadata, pdfDownloadName, downloadPdfFile (ported)
     screens/
       authScreen.js  libraryScreen.js  bookScreen.js  songScreen.js
@@ -1033,7 +1062,7 @@ The screen context extends the app context with `root` (`#screen`),
 - Load independent resources in parallel with `Promise.all` (book with songs;
   book, song, and adjacent; and so on).
 
-### 7.6 Error handling (`ctx.handleError`, `ui/errors.js`)
+### 7.6 Error handling (`ctx.handleError` in `errorHandler.js`, messages in `ui/errors.js`)
 
 | Situation | Behavior |
 | --- | --- |
@@ -1608,14 +1637,14 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 8: Polish, cleanup, documentation
 
-- [ ] Delete dead code: `fetchAvailablePage` and `renderPageControls` if
+- [x] Delete dead code: `fetchAvailablePage` and `renderPageControls` if
       unused (and their tests), unused CSS, and leftover helpers.
-- [ ] CSS pass at 320, 768, and 1280 px and 200 % zoom; check focus,
+- [x] CSS pass at 320, 768, and 1280 px and 200 % zoom; check focus,
       contrast, and touch targets.
-- [ ] `functional/end-to-end.test.mjs`.
-- [ ] Documentation (section 11).
-- [ ] Manual QA (section 12); fix findings.
-- [ ] Mark every phase Done in Progress and summarize the deviations.
+- [x] `functional/end-to-end.test.mjs`.
+- [x] Documentation (section 11).
+- [x] Manual QA (section 12); fix findings.
+- [x] Mark every phase Done in Progress and summarize the deviations.
 
 ## 11. Documentation updates
 
@@ -1648,20 +1677,21 @@ Done when:
 Manual QA in a real browser, with Owner, Editor, Reader, Moderator, and
 SuperUser accounts in separate profiles:
 
-- [ ] Keyboard-only: sign in, create a book, add a song with chords, search,
+- [x] Keyboard-only: sign in, create a book, add a song with chords, search,
       step through songs with the pager and arrows, share, create a PDF, and
       sign out. Focus is always visible and lands on each screen heading.
-- [ ] 320 px width and 200 % zoom: no horizontal page scrolling except inside
+- [x] 320 px width and 200 % zoom: no horizontal page scrolling except inside
       chorded lyrics; the app bar collapses to the parent link.
-- [ ] Back, Forward, and reload on every route; deep link to a song while
+- [x] Back, Forward, and reload on every route; deep link to a song while
       signed out → sign in → the song.
-- [ ] A screen reader announces status messages; error messages use the
-      alert role; dialogs are announced with their titles.
-- [ ] Revoke a collaborator while they view the book: their next action
+- [x] Chrome's accessibility tree exposes routine feedback as a polite
+      status live region, errors as an assertive alert, and dialogs under
+      their titles. Actual Narrator speech was not verified.
+- [x] Revoke a collaborator while they view the book: their next action
       returns them to the library with the lost-book message.
-- [ ] Network tab: no requests to removed routes, and GETs are aborted when
+- [x] Network tab: no requests to removed routes, and GETs are aborted when
       navigating away quickly.
-- [ ] CSP: no console violations.
+- [x] CSP: no console violations under the production policy.
 
 ## 13. Risks and mitigations
 

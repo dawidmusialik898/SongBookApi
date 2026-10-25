@@ -10,6 +10,14 @@ import {
     getAuthValidationMessage
 } from "../ui/errors.js"
 import { h } from "../ui/dom.js"
+import {
+    addField,
+    appendSubmit,
+    createViewLinks,
+    firstVisibleInput,
+    setFormBusy,
+    submitForm
+} from "../ui/authForm.js"
 
 const VIEW_TITLES = {
     login: "Sign in",
@@ -17,60 +25,6 @@ const VIEW_TITLES = {
     "forgot-password": "Forgot password",
     "resend-confirmation": "Resend confirmation",
     "reset-password": "Reset password"
-}
-
-export function handleAuthQuery(ctx) {
-    const currentUrl = new URL(window.location.href)
-    const authResult = currentUrl.searchParams.get("auth")
-    let notice = null
-
-    if (authResult === "confirmed") {
-        notice = {
-            type: "success",
-            message: "Email confirmed. You can now sign in."
-        }
-    } else if (authResult === "confirmation-failed") {
-        notice = {
-            type: "error",
-            message: "The confirmation link is invalid or expired."
-        }
-    } else if (authResult === "reset-password") {
-        const email = currentUrl.searchParams.get("email")
-        const code = currentUrl.searchParams.get("code")
-        if (
-            typeof email === "string" &&
-            email !== "" &&
-            typeof code === "string" &&
-            code !== ""
-        ) {
-            ctx.auth.resetCredentials = { email, code }
-            ctx.auth.emailPrefill = email
-            ctx.auth.view = "reset-password"
-            ctx.auth.forceAuth = true
-        } else {
-            notice = {
-                type: "error",
-                message: "The password reset link is invalid or incomplete."
-            }
-        }
-    }
-
-    if (authResult !== null) {
-        currentUrl.searchParams.delete("auth")
-        currentUrl.searchParams.delete("email")
-        currentUrl.searchParams.delete("code")
-        const search = currentUrl.searchParams.toString()
-        const sanitizedUrl = currentUrl.pathname +
-            (search === "" ? "" : `?${search}`) +
-            currentUrl.hash
-        window.history.replaceState(
-            window.history.state,
-            "",
-            sanitizedUrl
-        )
-    }
-
-    ctx.pendingStatus = notice
 }
 
 export function renderAuthScreen(ctx) {
@@ -162,7 +116,7 @@ function createForm(ctx, view, rerender, isPending, setPending) {
         })))
         appendSubmit(form, "Sign in")
         form.addEventListener("submit", event =>
-            submitForm(ctx, form, event, async isCurrent => {
+            submitForm(ctx, form, event, async (isCurrent, focusAfterSubmit) => {
                 try {
                     await login({
                         email: email.value,
@@ -176,7 +130,7 @@ function createForm(ctx, view, rerender, isPending, setPending) {
                             "Sign-in failed. Check your credentials or use " +
                                 "the confirmation and password recovery options."
                         )
-                        password.focus()
+                        focusAfterSubmit(password)
                     }
                     return
                 }
@@ -253,10 +207,10 @@ function createForm(ctx, view, rerender, isPending, setPending) {
         })
         appendSubmit(form, "Create account")
         form.addEventListener("submit", event =>
-            submitForm(ctx, form, event, async isCurrent => {
+            submitForm(ctx, form, event, async (isCurrent, focusAfterSubmit) => {
                 if (password.value !== confirmation.value) {
                     ctx.status.show("error", "The passwords do not match.")
-                    confirmation.focus()
+                    focusAfterSubmit(confirmation)
                     return
                 }
                 try {
@@ -378,7 +332,7 @@ function createForm(ctx, view, rerender, isPending, setPending) {
     })
     appendSubmit(form, "Reset password")
     form.addEventListener("submit", event =>
-        submitForm(ctx, form, event, async isCurrent => {
+        submitForm(ctx, form, event, async (isCurrent, focusAfterSubmit) => {
             if (ctx.auth.resetCredentials === null) {
                 ctx.status.show(
                     "error",
@@ -388,7 +342,7 @@ function createForm(ctx, view, rerender, isPending, setPending) {
             }
             if (password.value !== confirmation.value) {
                 ctx.status.show("error", "The passwords do not match.")
-                confirmation.focus()
+                focusAfterSubmit(confirmation)
                 return
             }
 
@@ -428,166 +382,4 @@ function createForm(ctx, view, rerender, isPending, setPending) {
         }, isPending, setPending)
     )
     return form
-}
-
-function createViewLinks(ctx, rerender, isPending) {
-    const links = []
-    const options = ctx.auth.view === "login"
-        ? [
-            ["forgot-password", "Forgot password?"],
-            ["resend-confirmation", "Resend confirmation email"],
-            ["register", "New here? Create an account"]
-        ]
-        : [["login", "Back to sign in"]]
-
-    for (const [view, text] of options) {
-        links.push(h("button", {
-            className: "button button--link",
-            type: "button",
-            dataset: { authView: view },
-            text,
-            on: {
-                click: () => {
-                    if (isPending()) {
-                        return
-                    }
-                    if (
-                        ctx.auth.view === "reset-password" &&
-                        view === "login"
-                    ) {
-                        ctx.auth.resetCredentials = null
-                    }
-                    ctx.auth.view = view
-                    rerender({ focus: true })
-                }
-            }
-        }))
-    }
-    return h("nav", {
-        className: "auth-links",
-        attrs: { "aria-label": "Account options" }
-    }, links)
-}
-
-async function submitForm(ctx, form, event, action, isPending, setPending) {
-    event.preventDefault()
-    if (isPending()) {
-        return false
-    }
-
-    const invalidControl = findInvalidControl(form)
-    if (invalidControl !== null) {
-        invalidControl.reportValidity?.()
-        invalidControl.focus()
-        return false
-    }
-
-    const requestGeneration = ctx.session.state.generation
-    const isCurrent = () => ctx.isCurrent() &&
-        ctx.session.state.generation === requestGeneration
-    if (!isCurrent()) {
-        return false
-    }
-
-    setPending(true)
-    setFormBusy(form, true)
-    try {
-        await action(isCurrent)
-        return true
-    } finally {
-        if (isCurrent()) {
-            setPending(false)
-            setFormBusy(form, false)
-        }
-    }
-}
-
-function addField(form, {
-    id,
-    label,
-    name,
-    type,
-    autocomplete,
-    required = false,
-    minLength = undefined,
-    readonly = false
-}) {
-    const input = h("input", {
-        id,
-        type,
-        attrs: {
-            name,
-            autocomplete,
-            ...(required ? { required: "" } : {}),
-            ...(minLength === undefined
-                ? {}
-                : { minlength: minLength }),
-            ...(readonly ? { readonly: "" } : {})
-        }
-    })
-    form.appendChild(h("div", {
-        className: "form-field"
-    },
-    h("label", {
-        attrs: { for: id },
-        text: label
-    }),
-    input))
-    return input
-}
-
-function appendSubmit(form, text) {
-    form.appendChild(h("button", {
-        className: "button button--primary",
-        type: "submit",
-        text
-    }))
-}
-
-function findInvalidControl(form) {
-    if (!form.checkValidity()) {
-        const invalid = form.elements.find(control =>
-            control.valid === false
-        )
-        return invalid ?? form
-    }
-
-    for (const control of form.elements) {
-        if (
-            control.getAttribute("required") !== null &&
-            control.type !== "hidden" &&
-            control.value.trim() === ""
-        ) {
-            return control
-        }
-        const minimum = Number(control.getAttribute("minlength"))
-        if (
-            Number.isInteger(minimum) &&
-            minimum > 0 &&
-            control.value.length < minimum
-        ) {
-            return control
-        }
-        if (
-            control.type === "email" &&
-            control.value !== "" &&
-            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(control.value)
-        ) {
-            return control
-        }
-    }
-    return null
-}
-
-function firstVisibleInput(form) {
-    return form.elements.find(control =>
-        control.tagName === "INPUT" && control.type !== "hidden"
-    )
-}
-
-function setFormBusy(form, busy) {
-    form.setAttribute("aria-busy", String(busy))
-    for (const control of form.elements) {
-        control.disabled = busy
-    }
 }

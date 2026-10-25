@@ -43,32 +43,3 @@ export function readPage(value, expectedPage) {
 
     return value
 }
-
-export async function fetchAvailablePage(fetchPage, requestedPage) {
-    let result = readPage(
-        await fetchPage(requestedPage),
-        requestedPage
-    )
-
-    if (requestedPage > 1 && result.items.length === 0) {
-        result = readPage(
-            await fetchPage(requestedPage - 1),
-            requestedPage - 1
-        )
-    }
-
-    return result
-}
-
-export function renderPageControls(
-    { container, previous, next, status },
-    { page, hasNext, busy, available }
-) {
-    container.hidden = !available || (page === 1 && !hasNext)
-    const label = `Page ${page}`
-    if (status.textContent !== label) {
-        status.textContent = label
-    }
-    previous.disabled = busy || page === 1
-    next.disabled = busy || !hasNext
-}

@@ -3,6 +3,7 @@
     --muted: #475467;
     --border: #d7deea;
     --separator: #e5eaf1;
+    --control-border: #667085;
     --accent: #1d4ed8;
     --danger: #b42318;
     --success: #067647;
@@ -39,7 +40,7 @@ textarea {
 input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
-    border: 1px solid #94a3b8;
+    border: 1px solid var(--control-border);
     border-radius: 0.35rem;
     min-height: 2.75rem;
     min-width: 0;
@@ -135,6 +136,7 @@ textarea {
 }
 
 .app-bar__account .menu__button {
+    justify-content: flex-start;
     max-width: min(14rem, 35vw);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -544,7 +546,8 @@ textarea {
     background: #ffffff;
     border: 1px solid var(--border);
     box-shadow: 0 0.25rem 0.75rem rgb(15 23 42 / 12%);
-    min-width: 12rem;
+    max-width: calc(100vw - 2rem);
+    min-width: min(12rem, calc(100vw - 2rem));
     padding: 0.25rem;
     position: absolute;
     right: 0;
@@ -722,12 +725,13 @@ textarea {
     text-align: right;
 }
 
-#song-pager.song-pager--next-only a {
-    grid-column: 2;
+#song-pager.song-pager--next-only a,
+#song-pager.song-pager--previous-only a {
+    grid-column: 1 / -1;
 }
 
 #song-pager.song-pager--previous-only a {
-    grid-column: 1;
+    text-align: left;
 }
 
 .editor-bar {
@@ -820,12 +824,6 @@ textarea {
     top: 0.25rem;
 }
 
-.part-editor__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
 .part-error,
 .form-error {
     color: var(--danger);
@@ -857,6 +855,22 @@ textarea {
 }
 
 @media (max-width: 39.999rem) {
+    .app-bar:has(.breadcrumb__item--nearest-ancestor) {
+        flex-wrap: wrap;
+        row-gap: 0;
+    }
+
+    .app-bar:has(.breadcrumb__item--nearest-ancestor) .app-bar__brand {
+        flex: 1 1 0;
+        max-width: max-content;
+        min-width: 0;
+    }
+
+    .app-bar__breadcrumb:has(.breadcrumb__item--nearest-ancestor) {
+        flex-basis: 100%;
+        order: 3;
+    }
+
     .breadcrumb__item {
         display: none;
     }
@@ -867,6 +881,14 @@ textarea {
 
     .breadcrumb__item--nearest-ancestor::before {
         content: none;
+    }
+
+    .breadcrumb__item--nearest-ancestor a {
+        display: block;
+        line-height: 2.75rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .breadcrumb__item--nearest-ancestor a::before {
@@ -898,5 +920,76 @@ textarea {
     .collaborator-item {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .collaborator-item__actions,
+    .user-item__actions {
+        max-width: 100%;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 19.999rem) {
+    .app-bar {
+        column-gap: 0.5rem;
+        padding-inline: 0.5rem;
+    }
+
+    .app-bar__brand {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .app-bar__account {
+        flex-shrink: 0;
+    }
+
+    .app-bar__account .menu__button {
+        font-size: 0;
+        justify-content: center;
+        padding-inline: 0.5rem;
+    }
+
+    .app-bar__account .menu__button::after {
+        content: "Menu";
+        font-size: 0.875rem;
+    }
+
+    .editor-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .editor-bar {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .editor-bar__title {
+        flex-basis: 100%;
+    }
+
+    .editor-bar > .button:last-child {
+        margin-left: auto;
+    }
+
+    .collaborator-item__actions select {
+        min-width: 0;
+    }
+
+    .row-link {
+        padding-right: 1.5rem;
+    }
+
+    .song-row {
+        grid-template-columns: 2rem minmax(0, 1fr);
+    }
+
+    #song-pager {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #song-pager a:last-child {
+        text-align: left;
     }
 }

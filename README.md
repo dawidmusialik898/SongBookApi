@@ -12,6 +12,11 @@ Owners can save whole-book or selected-song PDFs with or without chords.
 Anyone with read access can download saved PDFs and see when a book change
 has made an export outdated.
 
+The screen-based client has a library, searchable book screens, and song views
+with previous/next navigation and a chords toggle. Song editing uses focus mode
+and bracket chord notation; dedicated PDF and sharing screens and an account
+menu complete the main workflows.
+
 ```text
 client/   Browser assets, Node tests, and the original learning plan
 server/   .NET solution, API source, tests, and API documentation

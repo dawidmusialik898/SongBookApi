@@ -134,8 +134,8 @@ class FakeElement extends FakeNode {
         this.type = ""
         this.value = ""
         this.className = ""
-        this.disabled = false
-        this.hidden = false
+        this.disabledState = false
+        this.hiddenState = false
         this.checked = false
         this.listeners = new Map()
         this.attributes = new Map()
@@ -213,6 +213,39 @@ class FakeElement extends FakeNode {
         }
     }
 
+    // Browsers blur a focused control once it is disabled or hidden.
+    get disabled() {
+        return this.disabledState
+    }
+
+    set disabled(value) {
+        this.disabledState = Boolean(value)
+        if (
+            this.disabledState &&
+            this.ownerDocument?.focusedElement === this
+        ) {
+            this.ownerDocument.focusedElement = this.ownerDocument.body
+        }
+    }
+
+    get hidden() {
+        return this.hiddenState
+    }
+
+    set hidden(value) {
+        this.hiddenState = Boolean(value)
+        const document = this.ownerDocument
+        if (
+            this.hiddenState &&
+            document !== null &&
+            document !== undefined &&
+            document.focusedElement !== document.body &&
+            this.contains(document.focusedElement)
+        ) {
+            document.focusedElement = document.body
+        }
+    }
+
     get href() {
         return this.attributes.get("href") ?? ""
     }
@@ -258,9 +291,11 @@ class FakeElement extends FakeNode {
 
     checkValidity() {
         if (this.tagName === "FORM" && this.valid) {
-            return this.elements.every(
-                control => control.checkValidity()
-            )
+            for (const control of this.elements) {
+                if (!control.checkValidity()) {
+                    return false
+                }
+            }
         }
 
         return this.valid
@@ -270,17 +305,19 @@ class FakeElement extends FakeNode {
         this.reportValidityCalls += 1
 
         if (this.tagName === "FORM") {
-            const firstInvalidControl = this.elements.find(
-                control => !control.checkValidity()
-            )
-            firstInvalidControl?.focus()
+            for (const control of this.elements) {
+                if (!control.checkValidity()) {
+                    control.focus()
+                    break
+                }
+            }
         }
 
         return this.checkValidity()
     }
 
     focus() {
-        if (this.ownerDocument !== null) {
+        if (this.ownerDocument !== null && isFocusable(this)) {
             this.ownerDocument.activeElement = this
         }
     }
@@ -303,11 +340,24 @@ class FakeElement extends FakeNode {
                 "TEXTAREA"
             ].includes(element.tagName)
         )
-        formControls.namedItem = name =>
-            formControls.find(
-                control => control.name === name || control.id === name
-            ) ?? null
-        return formControls
+        const collection = {
+            length: formControls.length,
+            item(index) {
+                return formControls[index] ?? null
+            },
+            namedItem(name) {
+                return formControls.find(
+                    control => control.name === name || control.id === name
+                ) ?? null
+            },
+            [Symbol.iterator]() {
+                return formControls[Symbol.iterator]()
+            }
+        }
+        for (let index = 0; index < formControls.length; index += 1) {
+            collection[index] = formControls[index]
+        }
+        return collection
     }
 
     async click() {
@@ -506,10 +556,21 @@ class FakeElement extends FakeNode {
 class FakeDocument {
     constructor() {
         this.body = new FakeElement("body", this)
-        this.activeElement = this.body
+        this.focusedElement = this.body
         this.elementsById = new Map()
         this.title = ""
         this.appBrowser = null
+    }
+
+    // Browsers move focus to the body when the focused element is removed.
+    get activeElement() {
+        return this.focusedElement?.isConnected
+            ? this.focusedElement
+            : this.body
+    }
+
+    set activeElement(element) {
+        this.focusedElement = element ?? this.body
     }
 
     createElement(tagName) {
@@ -549,6 +610,40 @@ function findElements(root, predicate) {
     }
 
     return matches
+}
+
+// Mirrors browsers: focus() ignores elements that cannot take focus.
+function isFocusable(element) {
+    if (!element.isConnected || element.disabled === true) {
+        return false
+    }
+
+    const tagName = element.tagName
+    const focusable = tagName === "BODY" ||
+        tagName === "BUTTON" ||
+        tagName === "SELECT" ||
+        tagName === "TEXTAREA" ||
+        (tagName === "INPUT" && element.type.toLowerCase() !== "hidden") ||
+        (tagName === "A" && element.getAttribute("href") !== null) ||
+        element.getAttribute("tabindex") !== null
+    if (!focusable) {
+        return false
+    }
+
+    for (
+        let current = element;
+        current !== null && current !== undefined;
+        current = current.parentNode
+    ) {
+        if (
+            current.hidden === true ||
+            (current.tagName === "DIALOG" && !current.open)
+        ) {
+            return false
+        }
+    }
+
+    return true
 }
 
 export const APP_SHELL_IDS = Object.freeze([
@@ -834,6 +929,10 @@ export function installAppBrowser({
             body: parseRequestBody(options.body),
             headers
         }
+        Object.defineProperty(request, "signal", {
+            value: signal ?? null,
+            enumerable: false
+        })
         const apiRequest = Promise.resolve().then(
             () => api.handle(request)
         )

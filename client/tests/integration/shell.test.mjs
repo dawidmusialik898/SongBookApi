@@ -154,3 +154,81 @@ test("not-found navigation updates title and focus; editor routes hide the app b
         browser.restore()
     }
 })
+
+test("menu dialogs return focus to their menu and deletions focus the next heading", async () => {
+    const api = createFakeApi()
+    api.seed.account("owner@example.com")
+    const bookId = api.seed.book({
+        owner: "owner@example.com",
+        name: "Sunday Service"
+    })
+    const songId = api.seed.song(bookId, {
+        title: "Amazing Grace",
+        parts: [{ text: "Amazing grace" }]
+    })
+    api.signIn("owner@example.com")
+    const { app, browser } = createAppHarness(api, {
+        initialUrl: `https://localhost/#/books/${bookId}`
+    })
+    try {
+        await app.ready
+        const bookMenuButton = browser.document.getElementById(
+            "book-menu-button"
+        )
+        await bookMenuButton.click()
+        browser.queueDialogAnswer(false)
+        await browser.document.getElementById("rename-book-button").click()
+        await browser.settle()
+        assert.ok(
+            browser.document.activeElement === bookMenuButton,
+            "cancelling Rename returns focus to the book menu"
+        )
+
+        await bookMenuButton.click()
+        browser.queueDialogAnswer("Evening Service")
+        await browser.document.getElementById("rename-book-button").click()
+        await browser.settle()
+        assert.equal(browser.text("app-status-message"), "Song book renamed.")
+        assert.ok(
+            browser.document.activeElement === bookMenuButton,
+            "renaming returns focus to the book menu"
+        )
+
+        await browser.document.getElementById("song-list")
+            .children[0].children[0].click()
+        assert.equal(browser.screen(), "song")
+        const songMenuButton = browser.document.getElementById(
+            "song-menu-button"
+        )
+        await songMenuButton.click()
+        browser.queueDialogAnswer(false)
+        await browser.document.getElementById("delete-song-button").click()
+        await browser.settle()
+        assert.ok(
+            browser.document.activeElement === songMenuButton,
+            "cancelling Delete returns focus to the song menu"
+        )
+
+        await songMenuButton.click()
+        browser.queueDialogAnswer(true)
+        await browser.document.getElementById("delete-song-button").click()
+        await browser.settle()
+        assert.equal(browser.screen(), "book")
+        assert.equal(browser.text("app-status-message"), "Song deleted.")
+        assert.equal(browser.document.activeElement.id, "screen-heading")
+        assert.equal(api.requests.some(request =>
+            request.method === "DELETE" &&
+            request.path === `/songbooks/${bookId}/songs/${songId}`
+        ), true)
+
+        await browser.document.getElementById("book-menu-button").click()
+        browser.queueDialogAnswer(true)
+        await browser.document.getElementById("delete-book-button").click()
+        await browser.settle()
+        assert.equal(browser.screen(), "library")
+        assert.equal(browser.text("app-status-message"), "Song book deleted.")
+        assert.equal(browser.document.activeElement.id, "screen-heading")
+    } finally {
+        browser.restore()
+    }
+})

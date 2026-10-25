@@ -302,12 +302,17 @@ test("PDF download failures show an actionable error", async () => {
         await app.ready
         const downloadButton = browser.document.getElementById("pdf-list")
             .children[0].children.at(-1).children[0]
+        downloadButton.focus()
         await downloadButton.click()
         assert.equal(
             browser.text("app-status-message"),
             "Could not download the PDF. Try again."
         )
         assert.equal(downloadButton.disabled, false)
+        assert.ok(
+            browser.document.activeElement === downloadButton,
+            "a failed download keeps focus on its button"
+        )
     } finally {
         browser.restore()
     }

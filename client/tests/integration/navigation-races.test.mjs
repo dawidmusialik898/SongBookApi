@@ -112,6 +112,46 @@ test("a late song response cannot replace the book screen", async () => {
     }
 })
 
+test("leaving a song aborts its pending detail request", async () => {
+    const api = createFakeApi()
+    const { bookId, songId } = seedBook(api)
+    const nextSongId = api.seed.song(bookId, {
+        title: "Second song",
+        parts: [{ text: "More lyrics" }]
+    })
+    let pendingSignal = null
+    let markStarted
+    const started = new Promise(resolve => {
+        markStarted = resolve
+    })
+    api.intercept(request => {
+        if (
+            request.path === `/songbooks/${bookId}/songs/${songId}` &&
+            request.method === "GET"
+        ) {
+            pendingSignal = request.signal
+            markStarted()
+            return new Promise(() => {})
+        }
+        return undefined
+    })
+    const { app, browser } = createAppHarness(api)
+    try {
+        await app.ready
+        const opening = app.navigate(`#/books/${bookId}/songs/${songId}`)
+        await started
+        assert.equal(pendingSignal?.aborted, false)
+
+        await app.navigate(`#/books/${bookId}/songs/${nextSongId}`)
+        await opening
+        assert.equal(pendingSignal.aborted, true)
+        assert.equal(browser.screen(), "song")
+        assert.equal(browser.text("screen-heading"), "Second song")
+    } finally {
+        browser.restore()
+    }
+})
+
 test("a late song-list response cannot populate a screen after navigation", async () => {
     const api = createFakeApi()
     const { bookId } = seedBook(api)

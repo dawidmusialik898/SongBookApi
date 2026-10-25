@@ -18,6 +18,15 @@ export function createStatus(element) {
         element.setAttribute("aria-atomic", "true")
     }
 
+    function dismiss() {
+        const document = element.ownerDocument
+        const hadFocus = element.contains(document.activeElement)
+        clear()
+        if (hadFocus) {
+            document.getElementById("screen-heading")?.focus()
+        }
+    }
+
     function show(type, message, { action = null } = {}) {
         if (!STATUS_TYPES.has(type)) {
             throw new TypeError(`Unsupported status type: ${type}`)
@@ -55,7 +64,7 @@ export function createStatus(element) {
                 className: "button button--neutral status__dismiss",
                 type: "button",
                 text: "Dismiss",
-                on: { click: clear }
+                on: { click: dismiss }
             }))
         }
 

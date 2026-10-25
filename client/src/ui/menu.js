@@ -69,7 +69,8 @@ export function createMenu({
             text: item.text,
             on: {
                 click: async event => {
-                    close()
+                    // A dialog opened by the action must see a visible opener.
+                    close({ focus: true })
                     await item.onSelect?.(event)
                 }
             }

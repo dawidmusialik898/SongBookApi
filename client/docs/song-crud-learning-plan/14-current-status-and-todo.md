@@ -1,6 +1,6 @@
 # Current Implementation Status and TODO
 
-> Snapshot date: 2026-09-30
+> Snapshot date: 2026-10-25
 >
 > This tracking document reflects the monorepo at the same date. Earlier
 > validation records and stage instructions may refer to the two original
@@ -16,6 +16,7 @@
 | Point 12 | Complete | Persistent private song books, nested songs, Reader/Editor/Admin authorization, collaborator management, revocation, restart persistence, client UI, and isolation tests are implemented. |
 | Point 13 | Host verification pending | Approved home-host deployment is packaged and locally tested; public HTTPS, mail, second-machine restore, monitoring, and rollback still need on-host verification. |
 | Monorepo | Combined locally | `SongBookApi` contains both Git histories, with application code under `client/` and `server/` and shared release scripts under `deploy/`. |
+| UI redesign | Complete; Narrator speech unverified | [Implementation plan](../../ui-redesign-plan.md): phases 0–8 and all manual checks are complete; Chrome checks cover layouts from 1280 to 160 px and keyboard focus, and its accessibility tree confirms the live-region roles and dialog name, but actual Narrator speech was not verified. |
 
 ## Delivered application
 
@@ -36,8 +37,10 @@
 
 ## Current validation evidence
 
-- Release `dotnet test SongBookApi.slnx`: 62 passed, 0 failed.
-- Client Node suites: 63 passed, 0 failed.
+- Server `dotnet test server/SongBookApi.slnx`: 99 passed, 0 failed
+  (2026-10-25).
+- Client Node suites: 176 passed, 0 failed across unit, integration, and
+  functional tests (2026-10-25).
 - EF migrations:
   `20260727222024_AddIdentity`,
   `20260831193025_AddSongBooks`,

@@ -11,6 +11,7 @@ import {
     editorModelToPayload
 } from "../songForm.js"
 import { createSongEditorForm } from "../ui/songEditorForm.js"
+import { hasLostFocus } from "../ui/dom.js"
 import {
     getSaveSongErrorMessage,
     isUnavailableBookError
@@ -183,6 +184,7 @@ export function createSongEditorController(ctx, {
             return
         }
 
+        const focusBefore = document.activeElement
         setBusy(true)
         try {
             if (mode === "create") {
@@ -230,6 +232,11 @@ export function createSongEditorController(ctx, {
         } finally {
             if (ctx.isCurrent()) {
                 setBusy(false)
+                if (hasLostFocus()) {
+                    (formView.form.contains(focusBefore)
+                        ? focusBefore
+                        : formView.titleInput).focus()
+                }
             }
         }
     }

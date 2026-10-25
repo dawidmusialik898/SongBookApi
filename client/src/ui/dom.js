@@ -114,10 +114,53 @@ export function isInDocument(element) {
     return document.body.contains(element)
 }
 
+export function hasLostFocus() {
+    const active = document.activeElement
+    return active === null ||
+        active === undefined ||
+        active === document.body ||
+        !isInDocument(active)
+}
+
+export function findFirstControl(root) {
+    for (const child of root?.children ?? []) {
+        if (child.hidden === true) {
+            continue
+        }
+        if (isEnabledControl(child)) {
+            return child
+        }
+        const nested = findFirstControl(child)
+        if (nested !== null) {
+            return nested
+        }
+    }
+
+    return null
+}
+
 export function later(callback, delay) {
     const timer = setTimeout(callback, delay)
     timer.unref?.()
     return timer
+}
+
+function isEnabledControl(element) {
+    if (element.disabled === true) {
+        return false
+    }
+    switch (element.tagName) {
+        case "A":
+            return element.getAttribute("href") !== null
+        case "BUTTON":
+        case "SELECT":
+        case "TEXTAREA":
+            return true
+        case "INPUT":
+            return element.type !== "hidden"
+        default:
+            return false
+    }
 }
 
 function appendChild(parent, child) {

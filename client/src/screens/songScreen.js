@@ -398,6 +398,7 @@ export async function renderSongScreen(ctx) {
 function createPagerLink(song, side, ctx, bookId) {
     const title = displayValue(song.title, "Untitled song")
     const link = h("a", {
+        id: `${side}-song-link`,
         className: `song-pager__link song-pager__link--${side}`,
         attrs: {
             href: ctx.href("song", {

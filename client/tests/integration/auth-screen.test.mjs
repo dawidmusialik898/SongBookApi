@@ -53,6 +53,15 @@ test("auth views switch in place and focus their first field", async () => {
             assert.equal(browser.text("screen-heading"), heading)
             assert.equal(browser.document.activeElement.id, fieldId)
             assert.equal(browser.location.hash, "")
+            assert.equal(
+                findElement(
+                    browser.document.body,
+                    element => element.dataset?.authView === "login"
+                ).textContent,
+                view === "register"
+                    ? "Already have an account? Sign in"
+                    : "Back to sign in"
+            )
         }
         const backToLogin = findElement(
             browser.document.body,
@@ -128,12 +137,19 @@ test("forgot-password and resend-confirmation show generic success feedback", as
             element => element.dataset?.authView === "forgot-password"
         )
         await forgot.click()
-        browser.document.getElementById("forgot-password-email").value =
-            "person@example.com"
+        const forgotEmail = browser.document.getElementById(
+            "forgot-password-email"
+        )
+        forgotEmail.value = "person@example.com"
+        forgotEmail.focus()
         await browser.document.getElementById("forgot-password-form").submit()
         assert.equal(
             browser.text("app-status-message"),
             "If the account is eligible, an email was sent."
+        )
+        assert.ok(
+            browser.document.activeElement === forgotEmail,
+            "focus returns to the field that submitted the form"
         )
 
         const back = findElement(

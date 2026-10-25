@@ -277,6 +277,74 @@ test("user actions use the required confirmations and success messages", async (
     }
 })
 
+async function deleteAccountElsewhere(api, userId) {
+    const tokenResponse = await api.handle({
+        method: "GET",
+        path: "/auth/antiforgery"
+    })
+    const { token } = await tokenResponse.json()
+    const response = await api.handle({
+        method: "DELETE",
+        path: `/admin/users/${userId}`,
+        headers: { "X-CSRF-TOKEN": token }
+    })
+    assert.equal(response.ok, true)
+}
+
+test("user actions keep keyboard focus on the row menu or the heading", async () => {
+    const api = createFakeApi()
+    api.seed.account("superuser@example.com", { role: "superuser" })
+    const activeId = api.seed.account("active@example.com")
+    const deleteId = api.seed.account("delete@example.com")
+    const goneId = api.seed.account("gone@example.com")
+    api.signIn("superuser@example.com")
+    const { app, browser } = createAppHarness(api, {
+        initialUrl: "https://localhost/#/users"
+    })
+    try {
+        await app.ready
+        await confirmUserAction(
+            browser,
+            activeId,
+            "ban-user",
+            "Ban active@example.com? Their active sessions will end.",
+            "Ban",
+            "Account banned."
+        )
+        const activeMenu = menuForRow(findUserRow(browser, activeId))
+        assert.ok(
+            browser.document.activeElement === activeMenu.children[0],
+            "focus returns to the reloaded row menu"
+        )
+
+        await confirmUserAction(
+            browser,
+            deleteId,
+            "delete-user",
+            "Permanently delete delete@example.com and all of their song books and songs? This cannot be undone.",
+            "Delete user",
+            "Account and its song books deleted."
+        )
+        assert.equal(findUserRow(browser, deleteId), undefined)
+        assert.equal(browser.document.activeElement.id, "screen-heading")
+
+        const goneMenu = await openUserMenu(browser, goneId)
+        const deletion = findMenuAction(goneMenu, "delete-user").click()
+        await browser.settle()
+        await deleteAccountElsewhere(api, goneId)
+        await browser.document.getElementById("dialog-confirm").click()
+        await deletion
+        assert.equal(
+            browser.text("app-status-message"),
+            "This account no longer exists."
+        )
+        assert.equal(findUserRow(browser, goneId), undefined)
+        assert.equal(browser.document.activeElement.id, "screen-heading")
+    } finally {
+        browser.restore()
+    }
+})
+
 test("users screen shows empty and missing-email states safely", async () => {
     const emptyApi = createFakeApi()
     emptyApi.seed.account("moderator@example.com", { role: "moderator" })

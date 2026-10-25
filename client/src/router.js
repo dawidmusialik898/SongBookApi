@@ -1,6 +1,8 @@
 import { renderAuthScreen } from "./screens/authScreen.js"
+import { renderBookScreen } from "./screens/bookScreen.js"
 import { renderLibraryScreen } from "./screens/libraryScreen.js"
 import { renderNotFoundScreen } from "./screens/notFoundScreen.js"
+import { renderSongScreen } from "./screens/songScreen.js"
 import {
     renderLoadingScreen,
     renderUnavailableScreen
@@ -50,11 +52,11 @@ const ROUTES = [
     },
     {
         name: "song",
-        screenName: "not-found",
+        screenName: "song",
         segments: ["books", ":bookId", "songs", ":songId"],
         minimumAccess: "reader",
         focusMode: false,
-        render: renderNotFoundScreen
+        render: renderSongScreen
     },
     {
         name: "pdfs",
@@ -74,11 +76,11 @@ const ROUTES = [
     },
     {
         name: "book",
-        screenName: "not-found",
+        screenName: "book",
         segments: ["books", ":bookId"],
         minimumAccess: "reader",
         focusMode: false,
-        render: renderNotFoundScreen
+        render: renderBookScreen
     },
     {
         name: "users",

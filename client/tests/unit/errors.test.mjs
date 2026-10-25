@@ -4,8 +4,12 @@ import test from "node:test"
 import { ApiError } from "../../src/httpClient.js"
 import {
     getAuthValidationMessage,
+    getDeleteSongErrorMessage,
     getDeleteSongBookErrorMessage,
+    getLoadSongBookErrorMessage,
+    getLoadSongErrorMessage,
     getLoadSongBooksErrorMessage,
+    getLoadSongsErrorMessage,
     getSafeApiDetail,
     getSaveSongBookErrorMessage,
     toSentence
@@ -141,4 +145,64 @@ test("song-book deletion errors distinguish network failure", () => {
             "Could not delete the song book. Try again."
         )
     }
+})
+
+test("book, song, and song-list load messages keep the ported wording", () => {
+    assert.equal(
+        getLoadSongBookErrorMessage(new ApiError("offline", {
+            status: null
+        })),
+        "Could not reach the SongBook API. Open the song book again to retry."
+    )
+    assert.equal(
+        getLoadSongBookErrorMessage(new ApiError("server", {
+            status: 503
+        })),
+        "The server could not load the selected song book. Try again."
+    )
+    assert.equal(
+        getLoadSongsErrorMessage(new ApiError("offline", {
+            status: null
+        })),
+        "Could not reach the SongBook API. Check that it is running, then try again."
+    )
+    assert.equal(
+        getLoadSongsErrorMessage(new ApiError("bad request", {
+            status: 400
+        })),
+        "The API rejected the request to load songs. Try again."
+    )
+    assert.equal(
+        getLoadSongErrorMessage(new ApiError("server", {
+            status: 503
+        })),
+        "The server could not load song details. Select the song again to retry."
+    )
+    assert.equal(
+        getLoadSongErrorMessage(new ApiError("offline", {
+            status: null
+        })),
+        "Could not reach the SongBook API. Select the song again to retry."
+    )
+})
+
+test("song deletion failures use the original actionable messages", () => {
+    assert.equal(
+        getDeleteSongErrorMessage(new ApiError("offline", {
+            status: null
+        })),
+        "Could not reach the SongBook API. The song was not deleted. Try again."
+    )
+    assert.equal(
+        getDeleteSongErrorMessage(new ApiError("bad request", {
+            status: 400
+        })),
+        "The API rejected the delete request. The song was not deleted. Try again."
+    )
+    assert.equal(
+        getDeleteSongErrorMessage(new ApiError("server", {
+            status: 503
+        })),
+        "The server could not delete the song. The song remains available. Try again."
+    )
 })

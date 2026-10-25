@@ -40,6 +40,10 @@ export function createShell(ctx) {
         return closed
     }
 
+    function hasOpenMenu() {
+        return [...menus].some(menu => menu.isOpen())
+    }
+
     function renderAccountMenu() {
         closeMenus()
         elements.accountMenu.replaceChildren()
@@ -159,6 +163,7 @@ export function createShell(ctx) {
         closeMenus,
         closeMenusOutside,
         handleKeydown,
+        hasOpenMenu,
         renderAccountMenu,
         setBreadcrumb,
         setTitle,

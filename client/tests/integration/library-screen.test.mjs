@@ -131,8 +131,12 @@ test("new song book prompts keep duplicate errors and navigate on success", asyn
             .input("  New book  ")
         await browser.document.getElementById("dialog-confirm").click()
         await browser.settle()
-        assert.equal(browser.screen(), "not-found")
+        assert.equal(browser.screen(), "book")
         assert.match(browser.location.hash, /^#\/books\/book-/)
+        assert.equal(
+            browser.text("screen-heading"),
+            "New book"
+        )
         assert.equal(browser.text("app-status-message"), "Song book created.")
         assert.equal(api.requests.filter(request =>
             request.path === "/songbooks" && request.method === "POST"

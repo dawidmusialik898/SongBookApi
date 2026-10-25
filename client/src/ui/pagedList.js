@@ -202,7 +202,16 @@ export function createPagedList({
         page = value.page
         hasNext = value.hasNext
         list.replaceChildren(...rows)
-        stateElement.replaceChildren()
+        if (currentItems.length === 0 && page > 0) {
+            const empty = typeof messages.empty === "function"
+                ? messages.empty()
+                : messages.empty
+            stateElement.replaceChildren(
+                ...(Array.isArray(empty) ? empty : [empty])
+            )
+        } else {
+            stateElement.replaceChildren()
+        }
         moreButton.hidden = !hasNext
         moreButton.disabled = false
         list.setAttribute("aria-busy", "false")

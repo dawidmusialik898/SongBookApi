@@ -176,3 +176,22 @@ test("reload aborts the previous request and snapshots can be restored", async (
         harness.browser.restore()
     }
 })
+
+test("restoring an empty first-page snapshot shows the empty message", () => {
+    const harness = createList(async () => ({
+        items: [],
+        page: 1,
+        hasNext: false
+    }))
+    try {
+        harness.pagedList.restore({
+            items: [],
+            page: 1,
+            hasNext: false
+        })
+        assert.equal(harness.stateElement.textContent, "No items.")
+        assert.equal(harness.moreButton.hidden, true)
+    } finally {
+        harness.browser.restore()
+    }
+})

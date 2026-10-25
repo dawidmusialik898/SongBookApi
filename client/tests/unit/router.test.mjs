@@ -7,6 +7,20 @@ import { createAppHarness } from "../helpers/appHarness.mjs"
 function signedInHarness(initialUrl = "https://localhost/") {
     const api = createFakeApi()
     api.seed.account("owner@example.com")
+    api.seed.book({
+        id: "book-1",
+        owner: "owner@example.com",
+        name: "Book"
+    })
+    api.seed.book({
+        id: "a b",
+        owner: "owner@example.com",
+        name: "Encoded book"
+    })
+    api.seed.song("book-1", {
+        id: "song-1",
+        title: "Song"
+    })
     api.signIn("owner@example.com")
     return createAppHarness(api, { initialUrl })
 }

@@ -172,6 +172,32 @@ textarea {
     gap: 0.5rem;
 }
 
+.book-meta,
+.song-meta,
+.song-meta-original {
+    color: var(--muted);
+    margin-block: 0 1rem;
+}
+
+.song-meta-original {
+    font-style: italic;
+}
+
+.search-form {
+    margin-block: 1.25rem;
+    max-width: 32rem;
+}
+
+.search-form label {
+    font-weight: 600;
+}
+
+.button[aria-pressed="true"] {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.2em;
+}
+
 .screen-message {
     margin-block: 1rem;
 }
@@ -492,6 +518,14 @@ textarea {
 
 #song-pager a:last-child {
     text-align: right;
+}
+
+#song-pager.song-pager--next-only a {
+    grid-column: 2;
+}
+
+#song-pager.song-pager--previous-only a {
+    grid-column: 1;
 }
 
 .editor-bar {

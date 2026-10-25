@@ -82,6 +82,11 @@ test("non-401 session failures show unavailable and retry", async () => {
 test("anonymous sign-in keeps and renders a requested deep link", async () => {
     const api = createFakeApi()
     api.seed.account("owner@example.com")
+    api.seed.book({
+        id: "deep-book",
+        owner: "owner@example.com",
+        name: "Deep book"
+    })
     const { app, browser } = createAppHarness(api, {
         initialUrl: "https://localhost/#/books/deep-book"
     })
@@ -95,9 +100,9 @@ test("anonymous sign-in keeps and renders a requested deep link", async () => {
             "Password123!"
         await browser.document.getElementById("login-form").submit()
 
-        assert.equal(browser.screen(), "not-found")
+        assert.equal(browser.screen(), "book")
         assert.equal(browser.location.hash, "#/books/deep-book")
-        assert.equal(browser.text("screen-heading"), "Page not found")
+        assert.equal(browser.text("screen-heading"), "Deep book")
         assert.equal(browser.text("app-status-message"), "Signed in.")
     } finally {
         browser.restore()

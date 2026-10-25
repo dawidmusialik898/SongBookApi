@@ -203,6 +203,31 @@ export function getSongBookAccessErrorMessage(error) {
     return "Could not update collaborator access. Try again."
 }
 
+export function getLoadUsersErrorMessage(error) {
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "User accounts could not be loaded. Try again."
+    }
+    if (error instanceof ApiError && error.status >= 500) {
+        return "The server could not load users. Try again."
+    }
+    return "Could not load users. Try again."
+}
+
+export function getManagedUserActionErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 400) {
+        const detail = getSafeApiDetail(error)
+        return detail === null
+            ? "The account could not be updated. Try again."
+            : `The account could not be updated. ${toSentence(detail)}`
+    }
+    if (error instanceof ApiError && error.status === null) {
+        return "Could not reach the SongBook API. " +
+            "The account may have been updated; reload users before retrying."
+    }
+    return "The account could not be updated. Try again."
+}
+
 export function getLoadSongErrorMessage(error) {
     if (error instanceof ApiError && error.status === null) {
         return "Could not reach the SongBook API. " +

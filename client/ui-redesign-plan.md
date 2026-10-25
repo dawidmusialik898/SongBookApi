@@ -24,7 +24,7 @@ Update this table at the end of every phase.
 | 4 | Book and song screens | Complete | 8ca0f7e | Client 103/103; server 99/99. Book/song screens, search, snapshot restore, pager, and navigation-race coverage. |
 | 5 | Song editor with inline chords | Complete | ca56bce | Client 135/135; server 99/99. Inline chord editor, in-memory drafts, and account-isolated session recovery. |
 | 6 | PDF and share screens | Complete | | PDF and share screens implemented; client suite 156/156. |
-| 7 | User management screen | Not started | | |
+| 7 | User management screen | Complete | | Moderator/SuperUser management, permission matrix, and privilege-revocation handling; client 168/168, server 99/99. |
 | 8 | Polish, cleanup, documentation | Not started | | |
 
 ## 1. Start here
@@ -1601,8 +1601,8 @@ commit (or a few) containing only this phase's files.
 
 ### Phase 7: User management screen
 
-- [ ] `usersScreen` (5.5.10) and the account menu link.
-- [ ] Test: `integration/users-screen`.
+- [x] `usersScreen` (5.5.10) and the account menu link.
+- [x] Test: `integration/users-screen`.
 - Acceptance: as SuperUser and as Moderator, the menus show exactly the
   permitted actions, and confirmations and messages match 5.5.10.
 

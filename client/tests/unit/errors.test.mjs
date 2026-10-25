@@ -14,6 +14,8 @@ import {
     getLoadSongErrorMessage,
     getLoadSongBooksErrorMessage,
     getLoadSongsErrorMessage,
+    getLoadUsersErrorMessage,
+    getManagedUserActionErrorMessage,
     getSafeApiDetail,
     getSaveSongErrorMessage,
     getSongBookAccessErrorMessage,
@@ -362,4 +364,53 @@ test("book-unavailable classification covers access and missing-book responses",
         false
     )
     assert.equal(isUnavailableBookError(new Error("failed")), false)
+})
+
+test("user-management load and mutation errors are actionable", () => {
+    assert.equal(
+        getLoadUsersErrorMessage(new ApiError("offline", {
+            status: null
+        })),
+        "Could not reach the SongBook API. " +
+            "User accounts could not be loaded. Try again."
+    )
+    assert.equal(
+        getLoadUsersErrorMessage(new ApiError("server", {
+            status: 503
+        })),
+        "The server could not load users. Try again."
+    )
+    assert.equal(
+        getLoadUsersErrorMessage(new ApiError("forbidden", {
+            status: 403
+        })),
+        "Could not load users. Try again."
+    )
+    assert.equal(
+        getManagedUserActionErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: { detail: "The account is already banned" }
+        })),
+        "The account could not be updated. The account is already banned."
+    )
+    assert.equal(
+        getManagedUserActionErrorMessage(new ApiError("invalid", {
+            status: 400,
+            details: "<unsafe>"
+        })),
+        "The account could not be updated. Try again."
+    )
+    assert.equal(
+        getManagedUserActionErrorMessage(new ApiError("offline", {
+            status: null
+        })),
+        "Could not reach the SongBook API. " +
+            "The account may have been updated; reload users before retrying."
+    )
+    assert.equal(
+        getManagedUserActionErrorMessage(new ApiError("server", {
+            status: 503
+        })),
+        "The account could not be updated. Try again."
+    )
 })

@@ -71,7 +71,11 @@ test("moderators see the Manage users route and signed-in users do not", async (
 
         await link.click()
         assert.equal(browser.location.hash, "#/users")
-        assert.equal(browser.screen(), "not-found")
+        assert.equal(browser.screen(), "users")
+        assert.equal(
+            browser.text("user-list-state"),
+            "No other users."
+        )
     } finally {
         browser.restore()
     }

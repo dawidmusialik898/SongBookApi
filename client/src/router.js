@@ -7,6 +7,7 @@ import { renderPdfNewScreen } from "./screens/pdfNewScreen.js"
 import { renderShareScreen } from "./screens/shareScreen.js"
 import { renderSongScreen } from "./screens/songScreen.js"
 import { renderSongEditorScreen } from "./screens/songEditorScreen.js"
+import { renderUsersScreen } from "./screens/usersScreen.js"
 import {
     renderLoadingScreen,
     renderUnavailableScreen
@@ -88,11 +89,11 @@ const ROUTES = [
     },
     {
         name: "users",
-        screenName: "not-found",
+        screenName: "users",
         segments: ["users"],
         minimumAccess: "moderator",
         focusMode: false,
-        render: renderNotFoundScreen
+        render: renderUsersScreen
     }
 ]
 
@@ -273,7 +274,7 @@ export function createRouter(ctx) {
             }
         }
 
-        const sessionGeneration = ctx.session.state.generation
+        let sessionGeneration = ctx.session.state.generation
         let screenName = resolved.route.screenName ??
             resolved.route.name
         let screen = resolved.route.render
@@ -328,6 +329,17 @@ export function createRouter(ctx) {
                     !controller.signal.aborted &&
                     ctx.session.state.generation === sessionGeneration
             },
+            async refreshSession() {
+                const state = await ctx.session.load()
+                if (
+                    renderId === renderCount &&
+                    !controller.signal.aborted
+                ) {
+                    sessionGeneration = ctx.session.state.generation
+                    screenContext.sessionGeneration = sessionGeneration
+                }
+                return state
+            },
             setTitle: parts => ctx.shell.setTitle(parts),
             setBreadcrumb: items => ctx.shell.setBreadcrumb(items),
             navigate,
@@ -335,7 +347,8 @@ export function createRouter(ctx) {
             href,
             handleError: (error, scope) =>
                 ctx.handleError(error, scope),
-            registerMenu: menu => ctx.shell.registerMenu(menu)
+            registerMenu: menu => ctx.shell.registerMenu(menu),
+            unregisterMenu: menu => ctx.shell.unregisterMenu(menu)
         }
 
         try {

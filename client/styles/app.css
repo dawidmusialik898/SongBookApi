@@ -505,6 +505,36 @@ textarea {
     width: auto;
 }
 
+.user-item {
+    align-items: center;
+    border-bottom: 1px solid var(--separator);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    justify-content: space-between;
+    min-width: 0;
+    padding: 0.65rem 0.5rem;
+}
+
+.user-item__summary {
+    display: grid;
+    flex: 1;
+    gap: 0.25rem;
+    min-width: min(12rem, 100%);
+}
+
+.user-item__email {
+    overflow-wrap: anywhere;
+}
+
+.user-item__meta {
+    color: var(--muted);
+}
+
+.user-item__actions {
+    flex: none;
+}
+
 .menu {
     display: inline-block;
     position: relative;

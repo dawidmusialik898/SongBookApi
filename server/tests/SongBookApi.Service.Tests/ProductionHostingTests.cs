@@ -46,7 +46,7 @@ public sealed class ProductionHostingTests
 
         using HttpResponseMessage response = await client.GetAsync("/");
 
-        Assert.Contains("max-age=2592000",
+        Assert.Contains("max-age=31536000",
             Assert.Single(response.Headers.GetValues("Strict-Transport-Security")));
     }
 

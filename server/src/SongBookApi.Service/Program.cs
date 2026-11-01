@@ -22,13 +22,14 @@ if (!builder.Environment.IsDevelopment() &&
     builder.Configuration.AddKeyPerFile(credentialsDirectory, optional: false);
 }
 
-builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddApplicationServices();
 builder.Services.AddSongBookAuthentication(builder.Configuration, builder.Environment);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = MaxRequestBodySize);
 if (!builder.Environment.IsDevelopment())
 {
-    builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(30));
+    // IncludeSubDomains stays off: the DuckDNS parent domain is not ours.
+    builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 }
 
 WebApplication app = builder.Build();
@@ -95,11 +96,20 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Kestrel enforces the limit while reading; this also rejects oversized declared bodies early on any server.
+app.Use(async (context, next) =>
+{
+    if (context.Request.ContentLength > MaxRequestBodySize)
+    {
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        return;
+    }
+
+    await next();
+});
 string clientRoot;
 if (app.Environment.IsDevelopment())
 {
-    _ = app.MapOpenApi();
-
     string configuredClientRoot = builder.Configuration["DevelopmentStaticFiles:ClientRoot"]
         ?? throw new InvalidOperationException(
             "DevelopmentStaticFiles:ClientRoot must identify the client directory.");
@@ -150,8 +160,8 @@ app.Use(async (context, next) =>
 
     await next();
 });
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 _ = app.MapGet("/health", async (SongBookDbContext dbContext, CancellationToken cancellationToken) =>
 {
@@ -190,4 +200,6 @@ app.Run();
 
 public partial class Program
 {
+    // The app has no uploads; the largest realistic song request is far below this.
+    internal const long MaxRequestBodySize = 2 * 1024 * 1024;
 }

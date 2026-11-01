@@ -31,9 +31,10 @@ and bracket chord notation; dedicated PDF and sharing screens and an account
 menu complete the main workflows.
 
 ```text
-client/   Browser assets, Node tests, and the original learning plan
+client/   Browser assets and Node tests (see client/README.md)
 server/   .NET solution, API source, tests, and API documentation
 deploy/   Release packaging and optional self-hosted deployment templates
+docs/     Feature guides, dependency inventory, and security audit
 ```
 
 ## Run locally
@@ -66,8 +67,8 @@ The publish command creates an ignored directory under `artifacts/` with
 the API and only `client/index.html`, `client/src/`, and `client/styles/`
 packaged as public assets. See [the deployment guide](deploy/README.md)
 before hosting for real users, [the API README](server/README.md) for
-routes, authentication, and persistence details, and
+routes, authentication, and persistence details, [the client
+README](client/README.md) for client architecture and test conventions,
 [the external dependency inventory](docs/external-dependencies.md) for
-packages, services, and reduction options. The client learning plan in
-`client/docs/` records earlier stages when client and server lived in
-separate repositories.
+packages, services, and reduction options, and [the security
+audit](docs/security-audit-2026-11.md) for open security items.

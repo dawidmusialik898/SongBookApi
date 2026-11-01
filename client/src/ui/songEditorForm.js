@@ -1,12 +1,17 @@
 import { h } from "./dom.js"
 import { createMenu } from "./menu.js"
 
+// Mirrors the server's song field limits (SongEndpoints.ValidateSongLimits).
+const TITLE_MAX_LENGTH = 200
+const SHORT_FIELD_MAX_LENGTH = 32
+const PART_NAME_MAX_LENGTH = 100
+
 const DETAIL_FIELDS = [
-    ["author", "song-author", "Author"],
-    ["originalTitle", "song-original-title", "Original title"],
-    ["number", "song-number", "Number"],
-    ["key", "song-key", "Key"],
-    ["tempo", "song-tempo", "Tempo"]
+    ["author", "song-author", "Author", TITLE_MAX_LENGTH],
+    ["originalTitle", "song-original-title", "Original title", TITLE_MAX_LENGTH],
+    ["number", "song-number", "Number", SHORT_FIELD_MAX_LENGTH],
+    ["key", "song-key", "Key", SHORT_FIELD_MAX_LENGTH],
+    ["tempo", "song-tempo", "Tempo", SHORT_FIELD_MAX_LENGTH]
 ]
 
 export function createSongEditorForm(ctx, {
@@ -90,7 +95,8 @@ export function createSongEditorForm(ctx, {
         id: "song-title",
         name: "title",
         label: "Title",
-        value: model.fields.title
+        value: model.fields.title,
+        maxLength: TITLE_MAX_LENGTH
     })
     const moreDetailsButton = h("button", {
         id: "more-details-button",
@@ -107,12 +113,13 @@ export function createSongEditorForm(ctx, {
         className: "editor-details"
     })
     const detailInputs = new Map()
-    for (const [name, id, label] of DETAIL_FIELDS) {
+    for (const [name, id, label, maxLength] of DETAIL_FIELDS) {
         const field = createTextField({
             id,
             name,
             label,
-            value: model.fields[name]
+            value: model.fields[name],
+            maxLength
         })
         moreDetails.appendChild(field.wrapper)
         detailInputs.set(name, field.input)
@@ -214,7 +221,10 @@ export function createSongEditorForm(ctx, {
                 id: `part-name-${part.key}`,
                 type: "text",
                 dataset: { partField: "name", partKey: part.key },
-                attrs: { placeholder: "e.g. Verse 1" }
+                attrs: {
+                    placeholder: "e.g. Verse 1",
+                    maxlength: String(PART_NAME_MAX_LENGTH)
+                }
             })
             nameInput.value = part.name
             nameInput.addEventListener("input", () =>
@@ -331,11 +341,11 @@ export function createSongEditorForm(ctx, {
     }
 }
 
-function createTextField({ id, name, label, value }) {
+function createTextField({ id, name, label, value, maxLength }) {
     const input = h("input", {
         id,
         type: "text",
-        attrs: { name }
+        attrs: { name, maxlength: String(maxLength) }
     })
     input.value = value
     return {

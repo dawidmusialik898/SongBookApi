@@ -88,6 +88,39 @@ public sealed class SongBookAccessTests : IClassFixture<TestApplicationFactory>
         Assert.False(await db.SongBookAccessEntries.AnyAsync(entry => entry.SongBookId == book.Id));
     }
 
+    [Fact]
+    public async Task CollaboratorLookupsAreRateLimitedPerUser()
+    {
+        using TestApplicationFactory factory = new() { UseProductionUserRateLimits = true };
+        using HttpClient owner = await AuthenticationTestHelpers.CreateConfirmedClientAsync(
+            factory, $"invite-owner-{Guid.NewGuid():N}@example.test");
+        using HttpClient another = await AuthenticationTestHelpers.CreateConfirmedClientAsync(
+            factory, $"invite-other-{Guid.NewGuid():N}@example.test");
+        SongBookResponse book = await SongBookTestHelpers.CreateBookAsync(owner, "Invites");
+        SongBookResponse otherBook = await SongBookTestHelpers.CreateBookAsync(another, "Other invites");
+
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            using HttpResponseMessage response = await AuthenticationTestHelpers.PutJsonWithAntiforgeryAsync(
+                owner,
+                $"/songbooks/{book.Id}/access",
+                new { email = $"missing-{Guid.NewGuid():N}@example.test", accessLevel = "reader" });
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        using HttpResponseMessage limited = await AuthenticationTestHelpers.PutJsonWithAntiforgeryAsync(
+            owner,
+            $"/songbooks/{book.Id}/access",
+            new { email = $"missing-{Guid.NewGuid():N}@example.test", accessLevel = "reader" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+
+        using HttpResponseMessage otherUser = await AuthenticationTestHelpers.PutJsonWithAntiforgeryAsync(
+            another,
+            $"/songbooks/{otherBook.Id}/access",
+            new { email = $"missing-{Guid.NewGuid():N}@example.test", accessLevel = "reader" });
+        Assert.Equal(HttpStatusCode.NotFound, otherUser.StatusCode);
+    }
+
     private static Task<string> JsonContentAsync(SongBookAccessResponse response)
         => Task.FromResult(System.Text.Json.JsonSerializer.Serialize(
             response,

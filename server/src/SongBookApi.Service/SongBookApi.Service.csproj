@@ -8,13 +8,12 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.18.1" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
+    <!-- Security pin: overrides MimeKit's vulnerable System.Security.Cryptography.Pkcs 10.0.0 dependency. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 

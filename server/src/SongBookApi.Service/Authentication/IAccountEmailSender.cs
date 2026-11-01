@@ -4,4 +4,5 @@ public interface IAccountEmailSender
 {
     Task SendConfirmationLinkAsync(string email, string link);
     Task SendPasswordResetLinkAsync(string email, string link);
+    Task SendAccountExistsNoticeAsync(string email, string resetLink);
 }

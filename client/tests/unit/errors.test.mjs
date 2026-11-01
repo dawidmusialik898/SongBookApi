@@ -232,6 +232,10 @@ test("PDF load, generation, and download errors use actionable messages", () => 
         "Could not generate the PDF. Try again."
     )
     assert.equal(
+        getGeneratePdfErrorMessage(new ApiError("limited", { status: 429 })),
+        "Too many PDFs were generated recently. Try again later."
+    )
+    assert.equal(
         getDownloadPdfErrorMessage(new ApiError("offline", { status: null })),
         "Could not reach the SongBook API. " +
             "Try downloading the PDF again."
@@ -289,6 +293,12 @@ test("collaborator load and mutation errors are actionable and filter unsafe det
             new ApiError("forbidden", { status: 403 })
         ),
         "Could not update collaborator access. Try again."
+    )
+    assert.equal(
+        getSongBookAccessErrorMessage(
+            new ApiError("limited", { status: 429 })
+        ),
+        "Too many attempts, try again later."
     )
 })
 

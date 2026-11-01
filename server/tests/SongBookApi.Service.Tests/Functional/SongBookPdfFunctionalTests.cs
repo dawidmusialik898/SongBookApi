@@ -294,7 +294,8 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
         Assert.Equal(1, (await db.Songs.SingleAsync(value => value.Id == song.Id)).Revision);
         Assert.Equal(1, await db.SongRevisions.CountAsync(value => value.SongId == song.Id));
         Assert.Equal(1, (await db.SongBooks.SingleAsync(value => value.Id == book.Id)).ContentRevision);
-        Assert.Equal(22, await db.SongBookPdfs.CountAsync(value => value.SongBookId == book.Id));
+        Assert.Equal(SongBookApi.Service.Services.SongBookPdfService.RetainedPdfsPerBook,
+            await db.SongBookPdfs.CountAsync(value => value.SongBookId == book.Id));
         var activities = await db.BookActivities.Where(value => value.SongBookId == book.Id && value.Operation == "pdf.generated")
             .ToListAsync();
         Assert.Equal(22, activities.Count);
@@ -304,7 +305,7 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
             Assert.Null(activity.SongId);
             Assert.Null(activity.Revision);
         });
-        Assert.False((await ListAsync(owner, book.Id)).Items.Single(value => value.Id == defaults.Id).IsOutdated);
+        Assert.False((await ListAsync(owner, book.Id)).Items.Single(value => value.Id == omittedColumns.Id).IsOutdated);
     }
 
     [Theory]
@@ -409,6 +410,50 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
         Assert.Empty(await check.SongBookPdfs.ToListAsync());
         Assert.Empty(await check.BookActivities.ToListAsync());
         Assert.Equal(0, (await check.SongBooks.SingleAsync()).ContentRevision);
+    }
+
+    [Fact]
+    public async Task GeneratingBeyondTheRetentionLimitRemovesTheOldestPdfs()
+    {
+        using HttpClient owner = await CreateUserAsync("pdf-retention");
+        SongBookResponse book = await SongBookTestHelpers.CreateBookAsync(owner, "Retention");
+        SongBookResponse other = await SongBookTestHelpers.CreateBookAsync(owner, "Untouched");
+        SongBookPdfInfo otherPdf = await GenerateAsync(owner, other.Id, new { includeChords = false });
+        List<SongBookPdfInfo> generated = [];
+        for (int index = 0; index <= SongBookApi.Service.Services.SongBookPdfService.RetainedPdfsPerBook; index++)
+        {
+            generated.Add(await GenerateAsync(owner, book.Id, new { includeChords = false }));
+        }
+
+        Guid[] listed = [.. (await ListAsync(owner, book.Id)).Items.Select(pdf => pdf.Id)];
+        Assert.Equal(SongBookApi.Service.Services.SongBookPdfService.RetainedPdfsPerBook, listed.Length);
+        Assert.DoesNotContain(generated[0].Id, listed);
+        Assert.All(generated.Skip(1), pdf => Assert.Contains(pdf.Id, listed));
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await owner.GetAsync($"/songbooks/{book.Id}/pdfs/{generated[0].Id}/download")).StatusCode);
+        Assert.Equal(otherPdf.Id, Assert.Single((await ListAsync(owner, other.Id)).Items).Id);
+    }
+
+    [Fact]
+    public async Task PdfGenerationIsRateLimitedPerUser()
+    {
+        using TestApplicationFactory factory = new() { UseProductionUserRateLimits = true };
+        using HttpClient owner = await AuthenticationTestHelpers.CreateConfirmedClientAsync(
+            factory, Email("pdf-limit-owner"));
+        using HttpClient another = await AuthenticationTestHelpers.CreateConfirmedClientAsync(
+            factory, Email("pdf-limit-other"));
+        SongBookResponse book = await SongBookTestHelpers.CreateBookAsync(owner, "Limited");
+        SongBookResponse otherBook = await SongBookTestHelpers.CreateBookAsync(another, "Other");
+
+        for (int index = 0; index < 10; index++)
+        {
+            _ = await GenerateAsync(owner, book.Id, new { includeChords = false });
+        }
+
+        using HttpResponseMessage limited = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            owner, $"/songbooks/{book.Id}/pdfs", new { includeChords = false });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        _ = await GenerateAsync(another, otherBook.Id, new { includeChords = false });
     }
 
     private async Task<HttpClient> CreateUserAsync(string prefix)

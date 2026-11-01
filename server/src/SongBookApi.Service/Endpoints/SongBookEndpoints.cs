@@ -5,6 +5,7 @@ using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Services;
 using SongBookApi.Service.Authentication;
 using SongBookApi.Service.Contracts;
+using SongBookApi.Service.Extensions;
 
 namespace SongBookApi.Service.Endpoints;
 
@@ -22,7 +23,9 @@ public static class SongBookEndpoints
         books.MapPut("/{bookId:guid}", Rename).AddEndpointFilter<AntiforgeryValidationFilter>();
         books.MapDelete("/{bookId:guid}", Delete).AddEndpointFilter<AntiforgeryValidationFilter>();
         books.MapGet("/{bookId:guid}/access", ListAccess);
-        books.MapPut("/{bookId:guid}/access", SetAccess).AddEndpointFilter<AntiforgeryValidationFilter>();
+        books.MapPut("/{bookId:guid}/access", SetAccess)
+            .RequireRateLimiting(SongBookRateLimitOptions.CollaboratorInvitePolicy)
+            .AddEndpointFilter<AntiforgeryValidationFilter>();
         books.MapDelete("/{bookId:guid}/access/{accessId:guid}", RemoveAccess)
             .AddEndpointFilter<AntiforgeryValidationFilter>();
     }

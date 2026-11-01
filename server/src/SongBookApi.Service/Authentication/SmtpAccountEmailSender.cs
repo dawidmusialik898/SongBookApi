@@ -60,6 +60,14 @@ public sealed class SmtpAccountEmailSender : IAccountEmailSender
     public Task SendPasswordResetLinkAsync(string email, string link)
         => SendAsync(email, "Reset your SongBook password", "Reset your password using this link:", link);
 
+    public Task SendAccountExistsNoticeAsync(string email, string resetLink)
+        => SendAsync(
+            email,
+            "Your SongBook account already exists",
+            "Someone tried to register a SongBook account with this email address, which already has an account. " +
+            "If it was you, reset your password using this link:",
+            resetLink);
+
     private async Task SendAsync(string email, string subject, string introduction, string link)
     {
         if (!new EmailAddressAttribute().IsValid(email))

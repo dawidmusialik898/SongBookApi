@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 
 namespace SongBookApi.Service.Extensions;
@@ -124,7 +126,19 @@ public static class AuthenticationExtensions
             options.AddPolicy("login", context => CreateLimiter(context, 10, TimeSpan.FromMinutes(1)));
             options.AddPolicy("email", context => CreateLimiter(context, 5, TimeSpan.FromMinutes(15)));
             options.AddPolicy("shared-read", context => CreateLimiter(context, 60, TimeSpan.FromMinutes(1), stableUnknownIp: true));
+            options.AddPolicy(SongBookRateLimitOptions.CollaboratorInvitePolicy, context =>
+            {
+                SongBookRateLimitOptions limits = GetRateLimitOptions(context);
+                return CreateUserLimiter(
+                    context, limits.CollaboratorInvitePermitLimit, limits.CollaboratorInviteWindow);
+            });
+            options.AddPolicy(SongBookRateLimitOptions.PdfGeneratePolicy, context =>
+            {
+                SongBookRateLimitOptions limits = GetRateLimitOptions(context);
+                return CreateUserLimiter(context, limits.PdfGeneratePermitLimit, limits.PdfGenerateWindow);
+            });
         });
+        _ = services.AddOptions<SongBookRateLimitOptions>();
 
         if (environment.IsDevelopment())
         {
@@ -182,8 +196,32 @@ public static class AuthenticationExtensions
     {
         string remoteIp = context.Connection.RemoteIpAddress?.ToString() ??
             (stableUnknownIp ? "unknown" : context.TraceIdentifier);
+        return CreateFixedWindowPartition(remoteIp, permitLimit, window);
+    }
+
+    // Requires UseRateLimiter to run after UseAuthentication so that the user claims are available.
+    private static RateLimitPartition<string> CreateUserLimiter(
+        HttpContext context,
+        int permitLimit,
+        TimeSpan window)
+    {
+        string? userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        string partitionKey = !string.IsNullOrEmpty(userId)
+            ? $"user:{userId}"
+            : $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? context.TraceIdentifier}";
+        return CreateFixedWindowPartition(partitionKey, permitLimit, window);
+    }
+
+    private static SongBookRateLimitOptions GetRateLimitOptions(HttpContext context)
+        => context.RequestServices.GetRequiredService<IOptions<SongBookRateLimitOptions>>().Value;
+
+    private static RateLimitPartition<string> CreateFixedWindowPartition(
+        string partitionKey,
+        int permitLimit,
+        TimeSpan window)
+    {
         return RateLimitPartition.GetFixedWindowLimiter(
-            remoteIp,
+            partitionKey,
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = permitLimit,

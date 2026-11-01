@@ -13,6 +13,13 @@ namespace SongBookApi.Service.Endpoints;
 
 public static class SongEndpoints
 {
+    internal const int MaxTitleLength = 200;
+    internal const int MaxShortFieldLength = 32;
+    internal const int MaxParts = 100;
+    internal const int MaxPartNameLength = 100;
+    internal const int MaxPartTextLength = 10_000;
+    internal const int MaxChordsPerPart = 2_000;
+
     public static void MapSongEndpoints(this WebApplication app)
     {
         RouteGroupBuilder songs = app.MapGroup("/songbooks/{bookId:guid}/songs")
@@ -143,10 +150,10 @@ public static class SongEndpoints
                 });
         }
 
-        IResult? invalidChords = ValidateChords(request);
-        if (invalidChords is not null)
+        IResult? invalidRequest = ValidateSongLimits(request) ?? ValidateChords(request);
+        if (invalidRequest is not null)
         {
-            return invalidChords;
+            return invalidRequest;
         }
 
         DomainSong created = await songService.CreateSongAsync(bookId, ToDomain(request, acceptPartIds: false));
@@ -245,10 +252,10 @@ public static class SongEndpoints
             return denial;
         }
 
-        IResult? invalidChords = ValidateChords(request);
-        if (invalidChords is not null)
+        IResult? invalidRequest = ValidateSongLimits(request) ?? ValidateChords(request);
+        if (invalidRequest is not null)
         {
-            return invalidChords;
+            return invalidRequest;
         }
 
         try
@@ -322,6 +329,51 @@ public static class SongEndpoints
         }
 
         return null;
+    }
+
+    private static IResult? ValidateSongLimits(SongRequest request)
+    {
+        Dictionary<string, string[]> errors = [];
+        CheckLength(errors, "title", request.Title, MaxTitleLength);
+        CheckLength(errors, "originalTitle", request.OriginalTitle, MaxTitleLength);
+        CheckLength(errors, "author", request.Author, MaxTitleLength);
+        CheckLength(errors, "number", request.Number, MaxShortFieldLength);
+        CheckLength(errors, "key", request.Key, MaxShortFieldLength);
+        CheckLength(errors, "tempo", request.Tempo, MaxShortFieldLength);
+
+        if (request.Parts is { Count: > MaxParts })
+        {
+            errors["parts"] = [$"A song can have at most {MaxParts} parts."];
+        }
+        else if (request.Parts is not null)
+        {
+            for (int partIndex = 0; partIndex < request.Parts.Count; partIndex++)
+            {
+                PartRequest? part = request.Parts[partIndex];
+                if (part is null)
+                {
+                    continue;
+                }
+
+                CheckLength(errors, $"parts[{partIndex}].name", part.Name, MaxPartNameLength);
+                CheckLength(errors, $"parts[{partIndex}].text", part.Text, MaxPartTextLength);
+                if (part.Chords is { Count: > MaxChordsPerPart })
+                {
+                    errors[$"parts[{partIndex}].chords"] =
+                        [$"A part can have at most {MaxChordsPerPart} chords."];
+                }
+            }
+        }
+
+        return errors.Count == 0 ? null : Results.ValidationProblem(errors);
+
+        static void CheckLength(Dictionary<string, string[]> errors, string path, string? value, int max)
+        {
+            if (value?.Length > max)
+            {
+                errors[path] = [$"Use {max} characters or fewer."];
+            }
+        }
     }
 
     private static IResult? ValidateChords(SongRequest request)

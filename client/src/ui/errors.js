@@ -163,6 +163,9 @@ export function getLoadPdfsErrorMessage(error) {
 }
 
 export function getGeneratePdfErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 429) {
+        return "Too many PDFs were generated recently. Try again later."
+    }
     if (error instanceof ApiError && error.status === 400) {
         const detail = getSafeApiDetail(error)
         return detail === null
@@ -196,6 +199,9 @@ export function getLoadCollaboratorsErrorMessage(error) {
 }
 
 export function getSongBookAccessErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 429) {
+        return "Too many attempts, try again later."
+    }
     if (error instanceof ApiError && error.status === 400) {
         const detail = getSafeApiDetail(error)
         return detail === null

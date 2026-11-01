@@ -4,6 +4,7 @@ using SongBookApi.Domain;
 using SongBookApi.Domain.Services;
 using SongBookApi.Service.Authentication;
 using SongBookApi.Service.Contracts;
+using SongBookApi.Service.Extensions;
 
 namespace SongBookApi.Service.Endpoints;
 
@@ -15,7 +16,9 @@ public static class SongBookPdfEndpoints
             .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy);
 
         pdfs.MapGet("", List);
-        pdfs.MapPost("", Generate).AddEndpointFilter<AntiforgeryValidationFilter>()
+        pdfs.MapPost("", Generate)
+            .RequireRateLimiting(SongBookRateLimitOptions.PdfGeneratePolicy)
+            .AddEndpointFilter<AntiforgeryValidationFilter>()
             .AddEndpointFilter<MutationAttributionFilter>();
         pdfs.MapGet("/{pdfId:guid}/download", Download);
     }

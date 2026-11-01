@@ -783,7 +783,8 @@ textarea {
     gap: 1rem;
 }
 
-.editor-hint {
+.editor-hint,
+.screen-hint {
     color: var(--muted);
     margin: 0;
 }

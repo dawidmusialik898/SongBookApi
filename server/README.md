@@ -92,6 +92,12 @@ Account routes remain:
 - `POST /auth/forgot-password`
 - `POST /auth/reset-password`
 
+`POST /auth/register` returns `400` only for password-policy errors. Otherwise
+it returns the same generic `202 Accepted`, whether or not the email is
+already registered. A confirmed owner is emailed an "account already exists"
+notice with a password-reset link, and an unconfirmed account gets a new
+confirmation link.
+
 `GET /auth/me` returns `isAuthenticated`, `email`, and `role` (`user`,
 `moderator`, or `superuser`; `null` for an anonymous session).
 
@@ -181,7 +187,8 @@ Set collaborator access by the exact email of an existing registered user:
 
 Only `reader` and `editor` are accepted. The response contains the access-entry
 ID, email, and level, but no Identity user ID. The creator is always the sole
-Admin and cannot have an access entry.
+Admin and cannot have an access entry. `PUT /songbooks/{bookId}/access` is
+limited to 20 requests per user per hour; beyond that it returns `429`.
 
 ## Nested song contract
 
@@ -269,14 +276,21 @@ lyrics are edited, and warns when an anchored character is removed. Chorded
 lyrics retain their whitespace to keep offsets stable; the song view offers
 a **Show chords** toggle without altering the saved lyrics.
 
+Song create and update requests are limited to: `title`, `originalTitle`, and
+`author` 200 characters each; `number`, `key`, and `tempo` 32 characters each;
+100 parts per song; part `name` 100 characters and `text` 10,000 characters;
+and 2,000 chords per part. Every violation is returned in one `400` validation
+response (keys such as `parts[3].text`). Request bodies larger than 2 MB are
+rejected with `413`.
+
 Apply the `AddPartChords` migration before deploying this feature; it adds
 only the chord annotations table, leaving existing songs and parts intact.
 
 ## Saved PDF exports
 
-The selected book has a **PDF exports** panel. Only its owner can generate
+The book's **PDFs** screen lists saved exports. Only its owner can generate
 a PDF of all songs or select individual songs (including songs beyond the
-current list page). The owner chooses lyrics-only or with-chords; both
+first list page). The owner chooses lyrics-only or with-chords; both
 variants, and earlier generations, remain saved and downloadable. Any
 current Reader, Editor, or owner can view and download saved exports. A
 removed collaborator loses access to both the list and the download route
@@ -311,14 +325,10 @@ as in the paged song list:
 }
 ```
 
-Customization fields are optional: `fontFamily` is `lato` or `dejavu-sans-mono`,
-`fontSize` is an integer 8-18 pt, `orientation` is `portrait` or `landscape`,
-and `columns` is 1-2 in portrait or 1-3 in landscape. Omitted/null fields use
-the example defaults (landscape also defaults to one column in the API).
-Invalid options return field-specific `400` errors. Actual A4 pages flow songs
-down columns, across columns, then onto pages; headers/footers remain full-width.
-Chorded lyrics stay monospace and their 9 pt default grid scales proportionally
-with the selected 10 pt body default. See [PDF customization](../docs/pdf-customization.md).
+Customization fields (`fontFamily`, `fontSize`, `orientation`, `columns`) are
+optional; omitted/null fields use the example defaults, and invalid options
+return field-specific `400` errors. See [PDF customization](../docs/pdf-customization.md)
+for accepted values and the column/typography layout.
 
 `includeChords` is required. Invalid selections return `400`, an unknown or
 inaccessible book/export returns `404`, and a Reader or Editor attempting
@@ -352,7 +362,10 @@ differs from the current book. Changing collaborator permissions does not
 change PDF content or mark it outdated. Generated PDFs are stored as SQLite
 BLOBs under their book and removed when it is deleted; the existing SQLite
 backup/restore includes them. Downloads are sent with `Cache-Control: no-store`
-and use server-constructed attachment filenames.
+and use server-constructed attachment filenames. Only the newest 20 PDFs per
+book are kept; older ones are deleted after each generation. `POST
+/songbooks/{bookId}/pdfs` is limited to 10 generations per user per hour and
+returns `429` beyond that.
 
 Apply `StoreSongBookPdfs` and `AddPdfCustomization` (after the history migrations)
 before using this feature in
@@ -363,15 +376,13 @@ from `src/SongBookApi.Service/Resources/Fonts/` (its license is alongside and
 ships with the build); other text uses the selected bundled family. Output
 therefore does not depend on fonts installed on the host. Characters neither
 font covers, such as emoji or CJK text, print as placeholder glyphs instead of
-failing the export.
-
-The customization migration defaults existing metadata without rewriting stored
-bytes. Successful generation records `pdf.generated` activity in the same
-transaction as the file save, without advancing book content or song revisions.
+failing the export. Successful generation records `pdf.generated` activity in
+the same transaction as the file save, without advancing book content or song
+revisions.
 
 ## Paged collections
 
-The four list routes above default to page 1 and accept a positive integer
+Every paged list route defaults to page 1 and accepts a positive integer
 `page` query parameter. They return at most 50 entries per page, with this
 response shape (including on an empty page):
 
@@ -390,17 +401,8 @@ email and ID. Song pages use SQLite's default BINARY collation for the
 `Title`, then `Id` order. Adjacent-song lookups and PDF exports use that same
 canonical song order; do not re-sort it in .NET.
 
-Song-list `search` is applied before paging and supports title, original
-title, author, and number. It folds text by invariant lower-casing, Form D
-decomposition, removing nonspacing marks, mapping `ł` to `l`, and collapsing
-whitespace. Every token must be a substring of at least one folded field,
-and tokens may match different fields. Search is case- and
-diacritic-insensitive, and is limited to 100 characters after trimming;
-longer values return `400` with a validation error under `search`. An empty
-or whitespace-only value is equivalent to an unfiltered list.
-
-The client provides Previous/Next controls and returns to the previous page
-if a deletion empties the current one.
+Song-list `search` (described under the nested song contract) is applied
+before paging. The client loads further pages with **Show more**.
 
 Song-list items contain only `id`, `title`, `author`, and `number`. Fetch
 `GET /songbooks/{bookId}/songs/{songId}` for the full song, including its
@@ -420,9 +422,11 @@ the song-book/title/ID order used for pages.
 - Permission is queried from SQLite on every request, so revocation is
   immediate.
 
-Deleting a book cascades to its songs, parts, chords, PDFs, and access entries. Deleting a
-collaborator account cascades its access rows. Owner account deletion is
-restricted so it cannot silently delete owned books.
+Deleting a book cascades to its songs, parts, chords, PDFs, access entries,
+history, and share link. Deleting a collaborator account cascades its access
+rows and nulls its history/link attribution. The book owner foreign key is
+restricted, so owned books are removed only by the explicit account-deletion
+transaction described under User management, never silently.
 
 ## Private change history
 
@@ -451,12 +455,12 @@ dotnet ef migrations list \
   --context SongBookDbContext
 ```
 
-The 2026-09-30 Release validation passed 62 API tests and 63 client Node
-tests. A packaged Production process served the client and API locally with
-explicit migrations and health checks; SQLite and Data Protection key bytes
-were restored with restic over a local SFTP test server. The home host, trusted
-TLS, real Gmail delivery, off-host restore, monitoring, and rollback still
-require operator verification before real users rely on the service.
+Release validation status (what has been rehearsed locally and what still
+needs on-host verification) is tracked in [the deployment
+guide](../deploy/README.md) and [external dependencies](../docs/external-dependencies.md).
+The home host, trusted TLS, real Gmail delivery, off-host restore, monitoring,
+and rollback still require operator verification before real users rely on
+the service.
 
 `src/SongBookApi.Service/SongBookApi.Service.http` documents executable sample
 requests. `pwsh ./utils/simpleCurl.ps1` exercises the authenticated nested CRUD

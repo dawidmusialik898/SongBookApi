@@ -57,6 +57,92 @@ public sealed class SongCrudFunctionalTests : IClassFixture<SongBookApiFactory>
             (await client.GetAsync($"/songbooks/{book.Id}/songs/{song.Id}")).StatusCode);
     }
 
+    [Fact]
+    public async Task SongFieldLimitsAreEnforcedOnCreateAndUpdate()
+    {
+        using HttpClient client = await AuthenticationTestHelpers.CreateConfirmedClientAsync(
+            _factory,
+            $"limits-{Guid.NewGuid():N}@example.test");
+        SongBookResponse book = await CreateBookAsync(client);
+        SongResponse song = await CreateSongAsync(client, book.Id);
+        string songsUrl = $"/songbooks/{book.Id}/songs";
+
+        using HttpResponseMessage atLimit = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            client, songsUrl, new
+            {
+                title = new string('t', 200),
+                author = new string('a', 200),
+                originalTitle = new string('o', 200),
+                number = new string('1', 32),
+                key = new string('k', 32),
+                tempo = new string('m', 32),
+                parts = Enumerable.Range(0, 100)
+                    .Select(_ => new { name = new string('n', 100), text = "x" })
+                    .Prepend(new { name = "Long", text = new string('x', 10_000) })
+                    .Take(100)
+                    .ToArray()
+            });
+        Assert.Equal(HttpStatusCode.Created, atLimit.StatusCode);
+
+        (object Body, string Path)[] invalid =
+        [
+            (new { title = new string('t', 201) }, "title"),
+            (new { author = new string('a', 201) }, "author"),
+            (new { originalTitle = new string('o', 201) }, "originalTitle"),
+            (new { number = new string('1', 33) }, "number"),
+            (new { key = new string('k', 33) }, "key"),
+            (new { tempo = new string('m', 33) }, "tempo"),
+            (new { parts = Enumerable.Range(0, 101).Select(_ => new { text = "x" }).ToArray() }, "parts"),
+            (new { parts = new[] { new { text = "ok" }, new { text = new string('x', 10_001) } } }, "parts[1].text"),
+            (new { parts = new[] { new { name = new string('n', 101), text = "ok" } } }, "parts[0].name"),
+            (new
+            {
+                parts = new[]
+                {
+                    new
+                    {
+                        text = new string('x', 2_001),
+                        chords = Enumerable.Range(0, 2_001).Select(offset => new { offset, symbol = "C" }).ToArray()
+                    }
+                }
+            }, "parts[0].chords")
+        ];
+
+        foreach ((object body, string path) in invalid)
+        {
+            using HttpResponseMessage created =
+                await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(client, songsUrl, body);
+            using HttpResponseMessage updated = await AuthenticationTestHelpers.PutJsonWithAntiforgeryAsync(
+                client, $"{songsUrl}/{song.Id}", body);
+            foreach (HttpResponseMessage response in new[] { created, updated })
+            {
+                Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+                using System.Text.Json.JsonDocument problem =
+                    System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(path, out _), path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task OversizedRequestBodiesAreRejected()
+    {
+        using HttpClient client = await AuthenticationTestHelpers.CreateConfirmedClientAsync(
+            _factory,
+            $"body-{Guid.NewGuid():N}@example.test");
+        SongBookResponse book = await CreateBookAsync(client);
+        using HttpRequestMessage request = new(HttpMethod.Post, $"/songbooks/{book.Id}/songs")
+        {
+            Content = JsonContent.Create(new { title = new string('x', 3 * 1024 * 1024) })
+        };
+        request.Headers.Add("X-CSRF-TOKEN", await AuthenticationTestHelpers.GetAntiforgeryTokenAsync(client));
+        await request.Content.LoadIntoBufferAsync();
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
     private static async Task<SongBookResponse> CreateBookAsync(HttpClient client)
     {
         using HttpResponseMessage response =

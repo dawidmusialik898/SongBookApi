@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
+using SongBookApi.Service.Extensions;
 
 namespace SongBookApi.Service.Tests;
 
@@ -48,6 +49,9 @@ public class TestApplicationFactory : WebApplicationFactory<Program>
     }
 
     public FakeAccountEmailSender EmailSender { get; } = new();
+
+    // Per-user limits are raised by default so tests that create many PDFs or collaborators stay independent.
+    internal bool UseProductionUserRateLimits { get; init; }
 
     public HttpClient CreateSecureClient() => CreateClient(new WebApplicationFactoryClientOptions
     {
@@ -90,6 +94,15 @@ public class TestApplicationFactory : WebApplicationFactory<Program>
             {
                 services.AddSingleton<IStartupFilter, FixedRemoteIpStartupFilter>();
             }
+
+            if (!UseProductionUserRateLimits)
+            {
+                services.PostConfigure<SongBookRateLimitOptions>(options =>
+                {
+                    options.CollaboratorInvitePermitLimit = 10_000;
+                    options.PdfGeneratePermitLimit = 10_000;
+                });
+            }
         });
     }
 
@@ -124,6 +137,8 @@ public sealed class FakeAccountEmailSender : IAccountEmailSender
         new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _passwordResetLinks =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _accountExistsNotices =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public Task SendConfirmationLinkAsync(string email, string link)
     {
@@ -137,6 +152,14 @@ public sealed class FakeAccountEmailSender : IAccountEmailSender
         return Task.CompletedTask;
     }
 
+    public Task SendAccountExistsNoticeAsync(string email, string resetLink)
+    {
+        _accountExistsNotices[email] = resetLink;
+        return Task.CompletedTask;
+    }
+
     public string ConfirmationLinkFor(string email) => _confirmationLinks[email];
     public string PasswordResetLinkFor(string email) => _passwordResetLinks[email];
+    public bool TryGetAccountExistsNotice(string email, out string? resetLink)
+        => _accountExistsNotices.TryGetValue(email, out resetLink);
 }

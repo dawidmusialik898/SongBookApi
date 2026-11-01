@@ -203,6 +203,56 @@ public sealed class AuthenticationTests : IClassFixture<TestApplicationFactory>
     }
 
     [Fact]
+    public async Task DuplicateRegistration_ReturnsGenericResponseAndEmailsTheOwner()
+    {
+        using HttpClient client = _factory.CreateSecureClient();
+        string pending = $"pending-{Guid.NewGuid():N}@example.test";
+
+        using HttpResponseMessage first = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            client, "/auth/register", new { email = pending, password = AuthenticationTestHelpers.Password });
+        string firstLink = _factory.EmailSender.ConfirmationLinkFor(pending);
+        using HttpResponseMessage second = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            client, "/auth/register", new { email = pending, password = "a different long password" });
+
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, second.StatusCode);
+        Assert.Equal(await first.Content.ReadAsStringAsync(), await second.Content.ReadAsStringAsync());
+        Assert.NotEqual(firstLink, _factory.EmailSender.ConfirmationLinkFor(pending));
+        Assert.False(_factory.EmailSender.TryGetAccountExistsNotice(pending, out _));
+
+        string confirmed = $"confirmed-{Guid.NewGuid():N}@example.test";
+        using HttpClient confirmedClient = await AuthenticationTestHelpers.CreateConfirmedClientAsync(_factory, confirmed);
+        string confirmationLink = _factory.EmailSender.ConfirmationLinkFor(confirmed);
+        using HttpResponseMessage duplicate = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            client, "/auth/register", new { email = confirmed, password = AuthenticationTestHelpers.Password });
+
+        Assert.Equal(HttpStatusCode.Accepted, duplicate.StatusCode);
+        Assert.Equal(await first.Content.ReadAsStringAsync(), await duplicate.Content.ReadAsStringAsync());
+        Assert.Equal(confirmationLink, _factory.EmailSender.ConfirmationLinkFor(confirmed));
+        Assert.True(_factory.EmailSender.TryGetAccountExistsNotice(confirmed, out string? resetLink));
+        Assert.Contains("auth=reset-password", resetLink, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RegistrationWithWeakPassword_ReportsOnlyPasswordErrorsForExistingEmail()
+    {
+        string email = $"weak-{Guid.NewGuid():N}@example.test";
+        using HttpClient existing = await AuthenticationTestHelpers.CreateConfirmedClientAsync(_factory, email);
+        using HttpClient client = _factory.CreateSecureClient();
+
+        using HttpResponseMessage response = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            client, "/auth/register", new { email, password = "short" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using System.Text.Json.JsonDocument problem =
+            System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        string[] keys = [.. problem.RootElement.GetProperty("errors").EnumerateObject().Select(error => error.Name)];
+        Assert.Contains("PasswordTooShort", keys);
+        Assert.DoesNotContain(keys, key => key.StartsWith("Duplicate", StringComparison.Ordinal));
+        Assert.False(_factory.EmailSender.TryGetAccountExistsNotice(email, out _));
+    }
+
+    [Fact]
     public async Task DevelopmentStaticClientFiles_AreServedFromApiOrigin()
     {
         using HttpClient client = _factory.CreateSecureClient();

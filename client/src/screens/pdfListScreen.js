@@ -59,7 +59,12 @@ export async function renderPdfListScreen(ctx) {
         disabled: true,
         text: "Show more"
     })
-    ctx.root.replaceChildren(header, list, stateElement, moreButton)
+    const retentionHint = h("p", {
+        id: "pdf-retention-hint",
+        className: "screen-hint",
+        text: "Only the 20 most recent PDFs are kept for each song book."
+    })
+    ctx.root.replaceChildren(header, retentionHint, list, stateElement, moreButton)
 
     const pagedList = createPagedList({
         list,

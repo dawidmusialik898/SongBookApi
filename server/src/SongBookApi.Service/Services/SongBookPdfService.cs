@@ -9,6 +9,8 @@ namespace SongBookApi.Service.Services;
 
 public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISongBookPdfService
 {
+    public const int RetainedPdfsPerBook = 20;
+
     public async Task<PageResult<SongBookPdfInfo>> ListAsync(Guid bookId, int page)
     {
         PageResult<SongBookPdfListing> pdfs = await repository.ListAsync(bookId, page);
@@ -60,6 +62,7 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
             Content = SongBookPdfRenderer.Render(snapshot, includeChords, generatedAtUtc, options)
         };
         long currentRevision = await repository.AddAsync(pdf);
+        _ = await repository.DeleteOlderThanNewestAsync(bookId, RetainedPdfsPerBook);
         return new SongBookPdfInfo(
             pdf.Id,
             pdf.IncludeChords,

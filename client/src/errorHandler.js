@@ -243,6 +243,8 @@ function handleGenericError(ctx, error) {
         )
     } else if (error.status === 404) {
         ctx.status.show("error", "The requested item could not be found.")
+    } else if (error.status === 429) {
+        ctx.status.show("error", "Too many attempts, try again later.")
     } else if (error.status >= 500) {
         ctx.status.show(
             "error",

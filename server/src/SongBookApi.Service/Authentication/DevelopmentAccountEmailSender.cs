@@ -20,4 +20,13 @@ public sealed class DevelopmentAccountEmailSender(
             link);
         return Task.CompletedTask;
     }
+
+    public Task SendAccountExistsNoticeAsync(string email, string resetLink)
+    {
+        logger.LogWarning(
+            "Development-only sensitive account-exists notice for {Email} with password reset link: {Link}. Do not use this logger in production.",
+            email,
+            resetLink);
+        return Task.CompletedTask;
+    }
 }

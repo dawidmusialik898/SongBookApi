@@ -21,7 +21,7 @@ cd client
 node --test tests/unit/*.test.mjs tests/integration/*.test.mjs tests/functional/*.test.mjs
 cd ..
 dotnet test server/SongBookApi.slnx
-dotnet list server/src/SongBookApi.Service/SongBookApi.Service.csproj package --vulnerable --include-transitive
+dotnet list server/SongBookApi.slnx package --vulnerable --include-transitive
 ./deploy/publish.sh
 ```
 
@@ -228,9 +228,10 @@ registration email, confirmation, login, book/song CRUD, Reader/Editor/Admin
 isolation, password reset, and the SuperUser's **Manage users** view. Confirm
 that a Moderator cannot grant roles or act on other moderators, and that a
 banned account cannot sign in. The app should not expose
-`/appsettings.json` or other source files. After trusted HTTPS works, change
-`Security__HstsEnabled` to `true` in `/etc/songbook/songbook.env` and restart
-`songbook.service`. Add the public `/health` URL to a free UptimeRobot monitor
+`/appsettings.json` or other source files. **Required before go-live:** once
+trusted HTTPS works, change `Security__HstsEnabled` to `true` in
+`/etc/songbook/songbook.env` and restart `songbook.service`. The header uses a
+one-year `max-age` without `includeSubDomains`. Add the public `/health` URL to a free UptimeRobot monitor
 and send alerts to your operator mailbox. The service logs to the systemd
 journal; never paste tokens, credentials, or complete account links into
 public issue reports. Entry HTML is served with `Cache-Control: no-store`,

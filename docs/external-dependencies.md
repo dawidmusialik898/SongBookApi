@@ -1,6 +1,6 @@
 # External dependencies
 
-Snapshot: 2026-09-30. This inventory covers this monorepo's `client/`,
+Snapshot: 2026-11-01. This inventory covers this monorepo's `client/`,
 `server/`, and `deploy/` directories, including the current working tree.
 `deploy/publish.sh` packages **this repository's** `client/` assets with the
 API; no separate client checkout is required. The self-hosting design is
@@ -28,9 +28,8 @@ URL.
 
 ## Direct NuGet dependencies
 
-These are all 16 declared `PackageReference` entries in the four
-`server/**/*.csproj` files: 15 distinct package IDs because the test project
-also references `Microsoft.EntityFrameworkCore.Sqlite`. Projects target
+These are all 13 declared `PackageReference` entries in the four
+`server/**/*.csproj` files, with 13 distinct package IDs. Projects target
 `net10.0`; the ASP.NET Core/.NET shared frameworks are platform requirements,
 not individually declared NuGet packages.
 
@@ -38,32 +37,34 @@ not individually declared NuGet packages.
 | --- | --- | --- |
 | Domain | `Microsoft.Extensions.Logging.Abstractions` 10.0.10 | `SongService` uses `ILogger`; remove only by refactoring logging across the service boundary. Little benefit. |
 | Infrastructure | `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 10.0.10 | Identity users, roles, password hashes, and EF stores. Keep the selected cookie/confirmation model. |
-| Infrastructure, Tests | `Microsoft.EntityFrameworkCore.Sqlite` 10.0.10 | Persistent application database and SQLite integration tests. Another provider needs new migrations, code, tests, and backup operations. |
-| Infrastructure | `SQLitePCLRaw.bundle_e_sqlite3` 2.1.13 | Pins the embedded SQLite/native bundle above EF Core SQLite's 2.1.11 dependency. Do not drop without checking the resolved native version and advisories. |
+| Infrastructure | `Microsoft.EntityFrameworkCore.Sqlite` 10.0.10 | Persistent application database. The test project gets the same version transitively for its SQLite integration tests. Another provider needs new migrations, code, tests, and backup operations. |
+| Infrastructure | `SQLitePCLRaw.bundle_e_sqlite3` 2.1.13 | **Security pin:** overrides EF Core SQLite's 2.1.11 native SQLite bundle. Do not drop without checking the resolved native version and advisories. |
 | Service | `MailKit` 4.18.1 | TLS SMTP and MIME confirmation/reset emails; replace only alongside a tested sender implementation. |
-| Service | `Microsoft.AspNetCore.OpenApi` 10.0.10 | Registers and maps a **Development-only** OpenAPI endpoint. Optional if nobody consumes the schema. |
 | Service | `Microsoft.EntityFrameworkCore.Design` 10.0.10 | Design-time migration support, with `PrivateAssets=all`. Keep while using EF migrations; not an application feature. |
-| Service | `Microsoft.OpenApi` 2.7.5 | Pins the OpenAPI dependency above `Microsoft.AspNetCore.OpenApi`'s 2.0.0 minimum. Remove with OpenAPI support, or confirm a safe transitive resolution before dropping just this pin. |
 | Service | `QuestPDF` 2026.9.1 | Generates server-side song-book PDFs, including chorded lyrics; the Community license is free for eligible individual/open-source projects, but commercial deployment must check license eligibility. Text uses QuestPDF's bundled Lato font; chorded lyrics use DejaVu Sans Mono 2.37 (regular and bold), vendored in `server/src/SongBookApi.Service/Resources/Fonts/` with its Bitstream Vera/DejaVu license and embedded in the service assembly, so PDFs need no host fonts. Keep until PDF generation is replaced. |
-| Tests | `coverlet.collector` 10.0.1 | Optional coverage collection; candidate for removal if coverage is not used. |
+| Service | `System.Security.Cryptography.Pkcs` 10.0.13 | **Security pin:** overrides the vulnerable 10.0.0 version that `MimeKit` (via `MailKit`) requests. Remove only when MimeKit itself depends on a patched version. |
 | Tests | `Microsoft.AspNetCore.Mvc.Testing` 10.0.10 | `WebApplicationFactory` API integration tests. Keep. |
 | Tests | `Microsoft.NET.Test.Sdk` 18.8.1 | `dotnet test` host/discovery. Keep with the current test runner. |
 | Tests | `PdfPig` 0.1.16 | Extracts generated PDF text in tests to verify song selection and chord inclusion/exclusion; no runtime dependency. |
 | Tests | `xunit` 2.9.3 | Assertion/test framework. Keep unless rewriting tests. |
 | Tests | `xunit.runner.visualstudio` 3.1.5 | xUnit discovery and execution through the current test tooling. Keep. |
 
+The OpenAPI packages (`Microsoft.AspNetCore.OpenApi`, `Microsoft.OpenApi`),
+`coverlet.collector`, and the test project's duplicate
+`Microsoft.EntityFrameworkCore.Sqlite` reference were removed in 2026-11.
+
 ### Resolved transitive NuGet packages
 
 The local `dotnet list server/SongBookApi.slnx package --include-transitive
---no-restore --format json` result has **89 distinct package IDs**: the 15
-direct IDs above and the following **74 transitive IDs**. `Main/build` means
+--no-restore --format json` result has **86 distinct package IDs**: the 13
+direct IDs above and the following **73 transitive IDs**. `Main/build` means
 present in at least one non-test project's restore graph; it does **not** mean
 every entry is shipped in the production publish (EF design tooling, for
 example, is build-time). `Test-only` means absent from the non-test project
 graphs. Versions are resolved snapshots, **not locked**: there is no committed
 NuGet lock file.
 
-Main/build graph (48):
+Main/build graph (47):
 
 ```text
 BouncyCastle.Cryptography@2.7.0
@@ -113,7 +114,6 @@ System.Composition.Convention@9.0.0
 System.Composition.Hosting@9.0.0
 System.Composition.Runtime@9.0.0
 System.Composition.TypedParts@9.0.0
-System.Security.Cryptography.Pkcs@10.0.0
 ```
 
 Test-only graph (26):
@@ -173,7 +173,6 @@ individual .NET shared-framework assemblies are outside this NuGet list.
 | UptimeRobot and an operator alert mailbox (approved; external alert pending) | Independent public `/health` check and outage alerts. | Replace with another **external** checker/alert route; an on-host check alone cannot detect loss of public reachability. |
 | `bash`, `curl`, `rsync`, OpenSSH, `flock`/`util-linux`, `sqlite3`, `restic` (deployment tools) | DuckDNS update, release transfer, SSH/SFTP transport, serialized backups, SQLite backup/check, retention/restore. See `deploy/`. | No frontend/runtime package manager uses these. Tools can change with the deployment/backup approach; avoid reimplementing reliable backups for a marginal dependency reduction. |
 | Node.js (development only), optional `dotnet-ef` CLI, optional PowerShell `pwsh` | Built-in client tests; authoring/listing EF migrations; `server/utils/simpleCurl.ps1` smoke script, respectively. | None is needed on the production host. Keep Node for the current tests; install `dotnet-ef` only when working on migrations; PowerShell is optional. |
-| Globally installed `lite-server` (historical only) | Older split-origin instructions in the client learning plan. Current Development serves client and API from ASP.NET Core HTTPS. | Already unnecessary for the current workflow; do not add it to a package manifest or deploy it. |
 
 There is no configured Docker/container service, third-party authentication
 provider, managed database, cloud file store, payment service, CDN, or CI/CD
@@ -182,28 +181,34 @@ do not require a GitHub Actions runner.
 
 ## Practical reduction order
 
-1. **Low risk:** Retire the old `lite-server` workflow. If coverage reports are
-   not used, remove the tests-only `coverlet.collector` reference; this loses
-   coverage collection, not test execution. `Microsoft.CodeCoverage` is also
-   brought in by `Microsoft.NET.Test.Sdk` and would remain.
-2. **Small change, conditional:** If the Development OpenAPI schema has no
-   consumer, remove `AddOpenApi`/`MapOpenApi` from
-   `server/src/SongBookApi.Service/Program.cs` and remove both OpenAPI
-   references. Keeping only `Microsoft.AspNetCore.OpenApi` while removing the
-   `Microsoft.OpenApi` pin would allow an older resolved dependency: review
-   advisories and restore output first.
-3. **More implementation:** Change email provider without changing the
-   registration/recovery contract. Another SMTP service removes the Gmail
-   dependency but retains `MailKit`; an HTTPS sender can remove that package
-   chain but adds provider-specific code and a new external API. Likewise,
-   another DNS/monitoring/backup provider may reduce a particular vendor
-   dependency, not the underlying need for TLS, alerting, and off-host
-   recovery.
+1. **Done (2026-11):** Removed the tests-only `coverlet.collector` reference
+   (coverage was not collected anywhere). `Microsoft.CodeCoverage` is still
+   brought in by `Microsoft.NET.Test.Sdk`.
+2. **Done (2026-11):** Removed the unused Development-only OpenAPI endpoint
+   (`AddOpenApi`/`MapOpenApi`) together with both OpenAPI references, and the
+   test project's duplicate `Microsoft.EntityFrameworkCore.Sqlite` reference.
+3. **Only remaining package reduction option (deferred):** Replace `MailKit`
+   (and its `MimeKit`/`BouncyCastle` chain plus the `System.Security.Cryptography.Pkcs`
+   pin) with `System.Net.Mail.SmtpClient`. Trade-off: Microsoft discourages
+   `SmtpClient` for new development, it has no implicit TLS on port 465, and the
+   sender and its tests would need a rewrite. Changing the SMTP provider itself
+   (for example away from Gmail) does not change packages. Likewise, another
+   DNS/monitoring/backup provider may reduce a particular vendor dependency,
+   not the underlying need for TLS, alerting, and off-host recovery.
 4. **Keep for this design:** Identity, EF Core/SQLite, the patched native
-   SQLite bundle, migration tooling, authentication/antiforgery, persistent
-   keys, and the current test runner serve necessary behavior. In particular,
-   EF Core SQLite currently asks for `SQLitePCLRaw.bundle_e_sqlite3` 2.1.11;
-   the explicit 2.1.13 pin must not be removed without a safe replacement.
+   SQLite bundle, the Pkcs security pin, migration tooling,
+   authentication/antiforgery, persistent keys, and the current test runner
+   serve necessary behavior. In particular, EF Core SQLite currently asks for
+   `SQLitePCLRaw.bundle_e_sqlite3` 2.1.11; the explicit 2.1.13 pin must not be
+   removed without a safe replacement.
+
+## Dependency policy
+
+- Only add a package when the BCL or ASP.NET Core can't reasonably do the job.
+- Every version pin must have an XML comment in the csproj that names the
+  advisory or reason.
+- Run `dotnet list server/SongBookApi.slnx package --vulnerable --include-transitive`
+  before every release.
 
 There is no committed NuGet lock file. If exact transitive versions matter for
 repeatable releases, consider a lock file here while still updating and

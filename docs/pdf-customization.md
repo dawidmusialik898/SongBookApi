@@ -48,4 +48,5 @@ A successful save stages `pdf.generated` with the trusted current actor through
 `IActivityWriter` in the same EF transaction/save as the PDF. It does not advance
 song revisions or book content revisions, nor make existing PDFs stale.
 Content mutations retain their existing staleness behavior; old bytes remain
-downloadable unchanged.
+downloadable unchanged. Only the newest 20 PDFs per book are kept, and
+generation is limited to 10 per user per hour (`429` beyond that).

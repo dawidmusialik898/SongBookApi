@@ -25,4 +25,5 @@ public interface ISongBookPdfRepository
     Task<PageResult<SongBookPdfListing>> ListAsync(Guid bookId, int page);
     Task<SongBookPdf?> GetAsync(Guid bookId, Guid pdfId);
     Task<long> AddAsync(SongBookPdf pdf);
+    Task<int> DeleteOlderThanNewestAsync(Guid bookId, int keep);
 }

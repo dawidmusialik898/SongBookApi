@@ -89,4 +89,18 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext, IActivi
         await transaction.CommitAsync();
         return revision;
     }
+
+    public Task<int> DeleteOlderThanNewestAsync(Guid bookId, int keep)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(keep);
+        IQueryable<Guid> newest = dbContext.SongBookPdfs
+            .Where(pdf => pdf.SongBookId == bookId)
+            .OrderByDescending(pdf => pdf.GeneratedAtUtc)
+            .ThenByDescending(pdf => pdf.Id)
+            .Take(keep)
+            .Select(pdf => pdf.Id);
+        return dbContext.SongBookPdfs
+            .Where(pdf => pdf.SongBookId == bookId && !newest.Contains(pdf.Id))
+            .ExecuteDeleteAsync();
+    }
 }

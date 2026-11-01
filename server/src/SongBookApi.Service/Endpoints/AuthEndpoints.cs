@@ -79,20 +79,48 @@ public static class AuthEndpoints
         }
 
         ApplicationUser user = new() { UserName = email, Email = email };
+        // Validate the password before looking up the email so the response never depends on account existence.
+        List<IdentityError> passwordErrors = [];
+        foreach (IPasswordValidator<ApplicationUser> validator in userManager.PasswordValidators)
+        {
+            IdentityResult validation = await validator.ValidateAsync(userManager, user, request.Password);
+            passwordErrors.AddRange(validation.Errors);
+        }
+
+        if (passwordErrors.Count > 0)
+        {
+            return IdentityValidationProblem(IdentityResult.Failed([.. passwordErrors]));
+        }
+
+        ApplicationUser? existing = await userManager.FindByEmailAsync(email);
+        if (existing is not null)
+        {
+            if (await userManager.IsEmailConfirmedAsync(existing))
+            {
+                await emailSender.SendAccountExistsNoticeAsync(
+                    email,
+                    await BuildPasswordResetLinkAsync(existing, email, accountLinks, userManager));
+            }
+            else
+            {
+                await SendConfirmationLinkAsync(existing, email, accountLinks, userManager, emailSender);
+            }
+
+            return GenericEmailAccepted();
+        }
+
         IdentityResult result = await userManager.CreateAsync(user, request.Password);
         if (!result.Succeeded)
         {
-            return IdentityValidationProblem(result);
+            // A concurrent registration for the same email can still win the race.
+            return result.Errors.Any(error => error.Code is
+                    nameof(IdentityErrorDescriber.DuplicateEmail) or nameof(IdentityErrorDescriber.DuplicateUserName))
+                ? GenericEmailAccepted()
+                : IdentityValidationProblem(result);
         }
 
-        string code = EncodeToken(await userManager.GenerateEmailConfirmationTokenAsync(user));
-        string link = accountLinks.BuildLink("/auth/confirm-email", new Dictionary<string, string?>
-        {
-            ["userId"] = user.Id,
-            ["code"] = code
-        });
-        await emailSender.SendConfirmationLinkAsync(email, link);
-        return Results.Accepted(value: new { message = GenericEmailResponse });
+        await SendConfirmationLinkAsync(user, email, accountLinks, userManager, emailSender);
+        return GenericEmailAccepted();
     }
 
     private static async Task<IResult> ConfirmEmail(
@@ -134,17 +162,11 @@ public static class AuthEndpoints
             ApplicationUser? user = await userManager.FindByEmailAsync(email);
             if (user is not null && !await userManager.IsEmailConfirmedAsync(user))
             {
-                string code = EncodeToken(await userManager.GenerateEmailConfirmationTokenAsync(user));
-                string link = accountLinks.BuildLink("/auth/confirm-email", new Dictionary<string, string?>
-                {
-                    ["userId"] = user.Id,
-                    ["code"] = code
-                });
-                await emailSender.SendConfirmationLinkAsync(email, link);
+                await SendConfirmationLinkAsync(user, email, accountLinks, userManager, emailSender);
             }
         }
 
-        return Results.Accepted(value: new { message = GenericEmailResponse });
+        return GenericEmailAccepted();
     }
 
     private static async Task<IResult> Login(
@@ -188,18 +210,13 @@ public static class AuthEndpoints
             ApplicationUser? user = await userManager.FindByEmailAsync(email);
             if (user is not null && await userManager.IsEmailConfirmedAsync(user))
             {
-                string code = EncodeToken(await userManager.GeneratePasswordResetTokenAsync(user));
-                string link = accountLinks.BuildLink("/", new Dictionary<string, string?>
-                {
-                    ["auth"] = "reset-password",
-                    ["email"] = email,
-                    ["code"] = code
-                });
-                await emailSender.SendPasswordResetLinkAsync(email, link);
+                await emailSender.SendPasswordResetLinkAsync(
+                    email,
+                    await BuildPasswordResetLinkAsync(user, email, accountLinks, userManager));
             }
         }
 
-        return Results.Accepted(value: new { message = GenericEmailResponse });
+        return GenericEmailAccepted();
     }
 
     private static async Task<IResult> ResetPassword(
@@ -221,6 +238,40 @@ public static class AuthEndpoints
 
         IdentityResult result = await userManager.ResetPasswordAsync(user, token, request.NewPassword);
         return result.Succeeded ? Results.NoContent() : IdentityValidationProblem(result);
+    }
+
+    private static IResult GenericEmailAccepted()
+        => Results.Accepted(value: new { message = GenericEmailResponse });
+
+    private static async Task SendConfirmationLinkAsync(
+        ApplicationUser user,
+        string email,
+        AccountLinkBuilder accountLinks,
+        UserManager<ApplicationUser> userManager,
+        IAccountEmailSender emailSender)
+    {
+        string code = EncodeToken(await userManager.GenerateEmailConfirmationTokenAsync(user));
+        string link = accountLinks.BuildLink("/auth/confirm-email", new Dictionary<string, string?>
+        {
+            ["userId"] = user.Id,
+            ["code"] = code
+        });
+        await emailSender.SendConfirmationLinkAsync(email, link);
+    }
+
+    private static async Task<string> BuildPasswordResetLinkAsync(
+        ApplicationUser user,
+        string email,
+        AccountLinkBuilder accountLinks,
+        UserManager<ApplicationUser> userManager)
+    {
+        string code = EncodeToken(await userManager.GeneratePasswordResetTokenAsync(user));
+        return accountLinks.BuildLink("/", new Dictionary<string, string?>
+        {
+            ["auth"] = "reset-password",
+            ["email"] = email,
+            ["code"] = code
+        });
     }
 
     private static bool TryGetEmail(string? value, out string email)

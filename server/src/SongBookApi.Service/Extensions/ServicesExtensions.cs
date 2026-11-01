@@ -10,6 +10,10 @@ public static class ServicesExtensions
 {
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        _ = services.AddScoped<IMutationContext, CurrentMutation>();
+        _ = services.AddScoped<IActivityWriter, EfActivityWriter>();
+        _ = services.AddScoped<IShareLinkService, EfShareLinkService>();
+        _ = services.AddScoped<IHistoryRepository, EfHistoryRepository>();
         _ = services.AddScoped<ISongService, SongService>();
         _ = services.AddScoped<ISongRepository, EfSongRepository>();
         _ = services.AddScoped<ISongBookRepository, EfSongBookRepository>();

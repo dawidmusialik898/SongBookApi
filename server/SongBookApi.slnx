@@ -14,7 +14,4 @@
   <Folder Name="/tests/">
     <Project Path="tests/SongBookApi.Service.Tests/SongBookApi.Service.Tests.csproj" />
   </Folder>
-  <Folder Name="/utils/">
-    <File Path="utils/simpleCurl.ps1" />
-  </Folder>
 </Solution>

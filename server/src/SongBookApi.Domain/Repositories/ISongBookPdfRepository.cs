@@ -13,7 +13,11 @@ public sealed record SongBookPdfListing(
     bool IncludeChords,
     bool IsWholeBook,
     int SongCount,
-    string SelectedSongsJson);
+    string SelectedSongsJson,
+    string FontFamily,
+    int FontSize,
+    string Orientation,
+    int Columns);
 
 public interface ISongBookPdfRepository
 {

@@ -1,6 +1,7 @@
 import { ApiError } from "../httpClient.js"
 import {
     createSong,
+    getSong,
     updateSong
 } from "../songsApi.js"
 import { getSongBook } from "../songBooksApi.js"
@@ -8,10 +9,11 @@ import {
     cloneEditorModel,
     createEmptyEditorModel,
     editorModelFingerprint,
-    editorModelToPayload
+    editorModelToPayload,
+    songToEditorModel
 } from "../songForm.js"
 import { createSongEditorForm } from "../ui/songEditorForm.js"
-import { hasLostFocus } from "../ui/dom.js"
+import { h, hasLostFocus } from "../ui/dom.js"
 import {
     getSaveSongErrorMessage,
     isUnavailableBookError
@@ -31,15 +33,18 @@ export function createSongEditorController(ctx, {
     songPath,
     bookPath,
     serverModel,
-    restoredModel
+    restoredModel,
+    serverRevision = 0
 }) {
+    let expectedRevision = restoredModel?.expectedRevision ?? serverRevision
     let model = cloneEditorModel(restoredModel ?? serverModel)
     let draftRestored = restoredModel !== null
     let ignoreCleanup = false
     let saving = false
     let validationByKey = new Map()
     let formView
-    const initialModel = editorModelFingerprint(serverModel)
+    let initialModel = editorModelFingerprint(serverModel)
+    let conflictActions = null
 
     formView = createSongEditorForm(ctx, {
         mode,
@@ -160,6 +165,7 @@ export function createSongEditorController(ctx, {
         deleteOwnedDraft()
         draftRestored = false
         model = cloneEditorModel(serverModel)
+        expectedRevision = serverRevision
         validationByKey = new Map()
         formView.setStatus("")
         formView.update(model, false)
@@ -216,7 +222,7 @@ export function createSongEditorController(ctx, {
                 return
             }
 
-            await updateSong(bookId, songId, conversion.payload)
+            await updateSong(bookId, songId, { ...conversion.payload, expectedRevision })
             if (!ctx.isCurrent()) {
                 return
             }
@@ -259,6 +265,25 @@ export function createSongEditorController(ctx, {
             await refreshBookAfterForbidden()
             return
         }
+        if (error.status === 409 && mode === "edit") {
+            draftRestored = true
+            cleanup()
+            formView.setStatus("This song changed since you loaded it. Your draft was kept. Compare history or reload the saved song before retrying.")
+            if (conflictActions === null) {
+                conflictActions = h("div", { id: "song-conflict-actions", className: "screen-actions" },
+                    h("a", {
+                        id: "compare-song-history",
+                        attrs: { href: ctx.href("song-history", { bookId, songId }) },
+                        text: "Compare history"
+                    }),
+                    h("button", {
+                        id: "reload-conflicted-song", type: "button", text: "Reload saved song",
+                        on: { click: reloadSavedSong }
+                    }))
+                formView.form.appendChild(conflictActions)
+            }
+            return
+        }
         if (error.status === 404) {
             if (mode === "edit") {
                 await showDeletedSongError()
@@ -266,9 +291,40 @@ export function createSongEditorController(ctx, {
                 discardForLostBook()
                 await ctx.handleError(error, mutationScope())
             }
+
             return
         }
         formView.setStatus(getSaveSongErrorMessage(error, mode))
+    }
+
+    async function reloadSavedSong() {
+        if (saving || !ctx.isCurrent()) return
+        setBusy(true)
+        try {
+            const confirmed = await ctx.dialogs.confirmDialog({
+                title: "Reload saved song?",
+                message: "This discards your kept draft and unsaved changes. Compare or copy them first.",
+                confirmLabel: "Discard draft and reload", cancelLabel: "Keep editing", destructive: true
+            })
+            if (!confirmed || !ctx.isCurrent()) return
+            const song = await getSong(bookId, songId, { signal: ctx.signal })
+            if (!ctx.isCurrent()) return
+            serverModel = songToEditorModel(song)
+            serverRevision = song.revision ?? 0
+            expectedRevision = serverRevision
+            model = cloneEditorModel(serverModel)
+            initialModel = editorModelFingerprint(serverModel)
+            draftRestored = false
+            deleteOwnedDraft()
+            formView.update(model, false)
+            formView.setStatus("Saved song reloaded.")
+            conflictActions?.remove()
+            conflictActions = null
+        } catch (error) {
+            if (ctx.isCurrent() && error?.name !== "AbortError") await handleSaveError(error)
+        } finally {
+            if (ctx.isCurrent()) setBusy(false)
+        }
     }
 
     async function refreshBookAfterForbidden() {
@@ -398,6 +454,7 @@ export function createSongEditorController(ctx, {
             bookId,
             songId,
             title: currentSongTitle(),
+            expectedRevision,
             fields: { ...model.fields },
             parts: model.parts.map(part => ({
                 key: part.key,

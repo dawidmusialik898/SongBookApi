@@ -3,12 +3,16 @@ using Microsoft.EntityFrameworkCore.Storage;
 using SongBookApi.Domain;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Repositories;
+using SongBookApi.Domain.Services;
 using SongBookApi.Infrastructure.Identity;
 
 namespace SongBookApi.Infrastructure.Repositories;
 
-public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongRepository
+public sealed class EfSongRepository(SongBookDbContext dbContext, IMutationContext? mutationContext = null,
+    IActivityWriter? activityWriter = null) : ISongRepository
 {
+    private readonly IMutationContext mutation = mutationContext ?? new CurrentMutation();
+    private IActivityWriter Writer => activityWriter ?? new EfActivityWriter(dbContext, mutation);
     public async Task<PageResult<SongSummary>> GetPageAsync(Guid songBookId, int page)
         => Paging.FromLookahead(await dbContext.Songs
             .AsNoTracking()
@@ -44,18 +48,26 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
 
     public async Task<Song> AddAsync(Guid songBookId, Song song)
     {
-        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
+        await using IDbContextTransaction? transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync() : null;
         DateTimeOffset now = DateTimeOffset.UtcNow;
         song.Id = song.Id == Guid.Empty ? Guid.NewGuid() : song.Id;
         song.SongBookId = songBookId;
-        song.CreatedAtUtc = now;
+        if (!mutation.Current.RestoredFromRevision.HasValue) song.CreatedAtUtc = now;
         song.UpdatedAtUtc = now;
+        song.Revision = mutation.Current.RestoredFromRevision.HasValue
+            ? (await dbContext.SongRevisions.Where(entry => entry.SongBookId == songBookId && entry.SongId == song.Id)
+                .MaxAsync(entry => (long?)entry.Revision) ?? 0) + 1
+            : 1;
         for (int position = 0; position < song.Parts.Count; position++)
         {
             Part part = song.Parts[position];
             part.Id = part.Id == Guid.Empty ? Guid.NewGuid() : part.Id;
             part.SongId = song.Id;
-            part.Position = position;
+            if (mutation.Current.Operation != "song.copied")
+            {
+                part.Position = position;
+            }
             part.Chords ??= [];
             foreach (Chord chord in part.Chords)
             {
@@ -64,14 +76,17 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
         }
 
         dbContext.Songs.Add(song);
+        Writer.StageRevision(song, mutation.Current.Operation ?? "song.created", mutation.Current.RestoredFromRevision);
         await dbContext.SaveChangesAsync();
         await MarkBookChangedAsync(songBookId);
-        await transaction.CommitAsync();
+        if (transaction is not null) await transaction.CommitAsync();
         return song;
     }
 
     public async Task<bool> UpdateAsync(Guid songBookId, Guid songId, Song replacement)
     {
+        await using IDbContextTransaction? transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync() : null;
         Song? song = await dbContext.Songs
             .Include(candidate => candidate.Parts)
             .ThenInclude(part => part.Chords)
@@ -82,7 +97,8 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             return false;
         }
 
-        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
+        CheckExpectedRevision(song.Revision);
+        CaptureBaseline(song);
         int currentMaximum = song.Parts.Count == 0
             ? -1
             : song.Parts.Max(part => part.Position);
@@ -105,7 +121,16 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
             {
                 if (!existing.TryGetValue(requested.Id, out target!))
                 {
-                    throw new ArgumentException("A submitted part ID does not belong to this song.", nameof(replacement));
+                    if (!mutation.Current.RestoredFromRevision.HasValue)
+                    {
+                        throw new ArgumentException("A submitted part ID does not belong to this song.", nameof(replacement));
+                    }
+                    if (await dbContext.Parts.AnyAsync(part => part.Id == requested.Id))
+                    {
+                        throw new SongRevisionConflictException("A historical part ID is already in use.");
+                    }
+                    target = new Part { Id = requested.Id, SongId = songId };
+                    dbContext.Parts.Add(target);
                 }
 
                 if (!retained.Add(requested.Id))
@@ -157,6 +182,7 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
                     .Where(chord => !requestedOffsets.Contains(chord.Offset)))
                 {
                     dbContext.Chords.Remove(removed);
+                    target.Chords.Remove(removed);
                 }
             }
 
@@ -176,28 +202,53 @@ public sealed class EfSongRepository(SongBookDbContext dbContext) : ISongReposit
         song.Key = replacement.Key;
         song.Tempo = replacement.Tempo;
         song.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        song.Revision++;
+        song.Parts = finalParts;
+        Writer.StageRevision(song, mutation.Current.Operation ?? "song.updated", mutation.Current.RestoredFromRevision);
         await dbContext.SaveChangesAsync();
         await MarkBookChangedAsync(songBookId);
-        await transaction.CommitAsync();
-        song.Parts = finalParts;
+        if (transaction is not null) await transaction.CommitAsync();
         return true;
     }
 
     public async Task<bool> DeleteAsync(Guid songBookId, Guid songId)
     {
-        Song? song = await dbContext.Songs.SingleOrDefaultAsync(candidate =>
+        await using IDbContextTransaction? transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync() : null;
+        Song? song = await dbContext.Songs.Include(candidate => candidate.Parts).ThenInclude(part => part.Chords)
+            .SingleOrDefaultAsync(candidate =>
             candidate.SongBookId == songBookId && candidate.Id == songId);
         if (song is null)
         {
             return false;
         }
 
-        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
+        CheckExpectedRevision(song.Revision);
+        CaptureBaseline(song);
+        song.Revision++;
+        Writer.StageRevision(song, "song.deleted");
         dbContext.Songs.Remove(song);
         await dbContext.SaveChangesAsync();
         await MarkBookChangedAsync(songBookId);
-        await transaction.CommitAsync();
+        if (transaction is not null) await transaction.CommitAsync();
         return true;
+    }
+
+    private void CheckExpectedRevision(long revision)
+    {
+        if (mutation.Current.ExpectedRevision is long expected && expected != revision)
+        {
+            throw new SongRevisionConflictException();
+        }
+    }
+
+    private void CaptureBaseline(Song song)
+    {
+        if (song.Revision == 0)
+        {
+            song.Revision = 1;
+            Writer.StageRevision(song, "baseline", unattributed: true);
+        }
     }
 
     private async Task MarkBookChangedAsync(Guid songBookId)

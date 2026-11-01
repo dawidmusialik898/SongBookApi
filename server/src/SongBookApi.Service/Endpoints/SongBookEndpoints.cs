@@ -13,7 +13,8 @@ public static class SongBookEndpoints
     public static void MapSongBookEndpoints(this WebApplication app)
     {
         RouteGroupBuilder books = app.MapGroup("/songbooks")
-            .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy);
+            .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy)
+            .AddEndpointFilter<MutationAttributionFilter>();
 
         books.MapGet("", List);
         books.MapPost("", Create).AddEndpointFilter<AntiforgeryValidationFilter>();

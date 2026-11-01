@@ -232,6 +232,12 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                     b.Property<string>("OriginalTitle")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0L);
+
                     b.Property<Guid>("SongBookId")
                         .HasColumnType("TEXT");
 
@@ -249,6 +255,52 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                     b.HasIndex("SongBookId", "Title", "Id");
 
                     b.ToTable("Songs");
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.BookActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActorId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAtUtc")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("OwnerOnly")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("Revision")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("SongBookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SongId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SubjectUserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("SubjectUserId");
+
+                    b.HasIndex("SongBookId", "OccurredAtUtc", "Id");
+
+                    b.ToTable("BookActivities");
                 });
 
             modelBuilder.Entity("SongBookApi.Domain.Entities.SongBook", b =>
@@ -331,12 +383,28 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Columns")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.Property<byte[]>("Content")
                         .IsRequired()
                         .HasColumnType("BLOB");
 
                     b.Property<long>("ContentRevision")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FontFamily")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("lato");
+
+                    b.Property<int>("FontSize")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(10);
 
                     b.Property<long>("GeneratedAtUtc")
                         .HasColumnType("INTEGER");
@@ -346,6 +414,12 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
 
                     b.Property<bool>("IsWholeBook")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Orientation")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("portrait");
 
                     b.Property<string>("SelectedSongsJson")
                         .IsRequired()
@@ -362,6 +436,75 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                     b.HasIndex("SongBookId", "GeneratedAtUtc");
 
                     b.ToTable("SongBookPdfs");
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.SongBookShareLink", b =>
+                {
+                    b.Property<Guid>("SongBookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActorId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAtUtc")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("SongBookId");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("SongBookShareLinks");
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.SongRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActorId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAtUtc")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("RestoredFromRevision")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SongBookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SongId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("SongBookId", "SongId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("SongRevisions");
                 });
 
             modelBuilder.Entity("SongBookApi.Infrastructure.Identity.ApplicationUser", b =>
@@ -509,6 +652,25 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SongBookApi.Domain.Entities.BookActivity", b =>
+                {
+                    b.HasOne("SongBookApi.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SongBookApi.Domain.Entities.SongBook", null)
+                        .WithMany()
+                        .HasForeignKey("SongBookId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SongBookApi.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("SubjectUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("SongBookApi.Domain.Entities.SongBook", b =>
                 {
                     b.HasOne("SongBookApi.Infrastructure.Identity.ApplicationUser", null)
@@ -544,6 +706,34 @@ namespace SongBookApi.Infrastructure.Identity.Migrations
                         .IsRequired();
 
                     b.Navigation("SongBook");
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.SongBookShareLink", b =>
+                {
+                    b.HasOne("SongBookApi.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SongBookApi.Domain.Entities.SongBook", null)
+                        .WithMany()
+                        .HasForeignKey("SongBookId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SongBookApi.Domain.Entities.SongRevision", b =>
+                {
+                    b.HasOne("SongBookApi.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SongBookApi.Domain.Entities.SongBook", null)
+                        .WithMany()
+                        .HasForeignKey("SongBookId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SongBookApi.Domain.Dto.Part", b =>

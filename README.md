@@ -9,8 +9,21 @@ Song parts can also carry optional guitar chords anchored above individual
 lyric characters; the song view can show or hide them without changing the
 lyrics.
 Owners can save whole-book or selected-song PDFs with or without chords.
+Exports offer bundled font choice, 8-18 pt typography, A4 orientation and flowing
+columns. See [PDF customization](docs/pdf-customization.md).
 Anyone with read access can download saved PDFs and see when a book change
 has made an export outdated.
+Private book/song history records activity and immutable song revisions.
+Readers can preview and compare content; editors/owners can restore old or
+deleted songs. Access-management activity is owner-only. See
+[history and integration contracts](docs/change-history.md).
+Readers can **Copy to song book** from a song view, choosing a different book
+where they are editor/owner. Copies keep all metadata, lyrics and chords but
+have independent identities and history; the source stays unchanged. See
+[copying songs](docs/copy-songs.md).
+Owners can also create a revocable anonymous reader link, disabled by default.
+Link screens expose only reading and saved PDF downloads, never editing,
+collaborators or private history. See [read-only links](docs/read-only-share-links.md).
 
 The screen-based client has a library, searchable book screens, and song views
 with previous/next navigation and a chords toggle. Song editing uses focus mode

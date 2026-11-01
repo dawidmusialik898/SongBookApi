@@ -3,6 +3,13 @@ import { later } from "./dom.js"
 import { displayValue } from "./format.js"
 
 export function readPdfMetadata(pdf) {
+    // Older saved-export fixtures omit customization metadata.
+    const options = {
+        fontFamily: pdf?.fontFamily === undefined ? "lato" : pdf.fontFamily,
+        fontSize: pdf?.fontSize === undefined ? 10 : pdf.fontSize,
+        orientation: pdf?.orientation === undefined ? "portrait" : pdf.orientation,
+        columns: pdf?.columns === undefined ? 1 : pdf.columns
+    }
     if (
         pdf === null ||
         typeof pdf !== "object" ||
@@ -21,12 +28,31 @@ export function readPdfMetadata(pdf) {
         ) ||
         typeof pdf.generatedAtUtc !== "string" ||
         Number.isNaN(Date.parse(pdf.generatedAtUtc)) ||
-        typeof pdf.isOutdated !== "boolean"
+        typeof pdf.isOutdated !== "boolean" ||
+        Object.keys(pdfOptionErrors(options)).length !== 0
     ) {
         throw new ApiError("The API returned invalid PDF metadata.")
     }
 
-    return pdf
+    return { ...pdf, ...options }
+}
+
+export function pdfOptionErrors({ fontFamily, fontSize, orientation, columns }) {
+    const errors = {}
+    if (!["lato", "dejavu-sans-mono"].includes(fontFamily)) {
+        errors.fontFamily = "Choose Lato or DejaVu Sans Mono."
+    }
+    if (!Number.isInteger(fontSize) || fontSize < 8 || fontSize > 18) {
+        errors.fontSize = "Choose an integer font size from 8 to 18."
+    }
+    if (!["portrait", "landscape"].includes(orientation)) {
+        errors.orientation = "Choose portrait or landscape."
+    }
+    if (!Number.isInteger(columns) || columns < 1 ||
+        columns > (orientation === "landscape" ? 3 : 2)) {
+        errors.columns = "Choose 1-2 columns for portrait or 1-3 for landscape."
+    }
+    return errors
 }
 
 export function pdfDownloadName(bookName, pdf) {

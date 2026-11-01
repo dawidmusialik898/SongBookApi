@@ -65,6 +65,7 @@ test("songs API adapter completes the five-endpoint CRUD workflow", async () => 
         )
         assert.deepEqual(await getSong(songBookId, createdSong.id), {
             id: createdSong.id,
+            revision: createdSong.revision + 1,
             ...updatePayload
         })
 

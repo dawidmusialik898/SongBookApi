@@ -1,12 +1,17 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using SongBookApi.Domain;
 using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Services;
 using SongBookApi.Infrastructure.Identity;
+using SongBookApi.Infrastructure.Repositories;
 using SongBookApi.Service.Contracts;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
@@ -241,6 +246,169 @@ public sealed class SongBookPdfFunctionalTests : IClassFixture<TestApplicationFa
         await using AsyncServiceScope checkScope = _factory.Services.CreateAsyncScope();
         SongBookDbContext checkDb = checkScope.ServiceProvider.GetRequiredService<SongBookDbContext>();
         Assert.False(await checkDb.SongBookPdfs.AnyAsync(pdf => pdf.SongBookId == book.Id));
+    }
+
+    [Fact]
+    public async Task EffectiveOptionsPersistForEveryAllowedLayoutAndGenerationRecordsOnlyActivity()
+    {
+        using HttpClient owner = await CreateUserAsync("pdf-options");
+        SongBookResponse book = await SongBookTestHelpers.CreateBookAsync(owner, "Options");
+        SongResponse song = await SongBookTestHelpers.CreateSongAsync(owner, book.Id, "Probe", [new { text = "Bodyprobe" }]);
+        SongBookPdfInfo defaults = await GenerateAsync(owner, book.Id, new { includeChords = false });
+        Assert.Equal(("lato", 10, "portrait", 1),
+            (defaults.FontFamily, defaults.FontSize, defaults.Orientation, defaults.Columns));
+        foreach (string orientation in new[] { "portrait", "landscape" })
+        {
+            foreach (int columns in Enumerable.Range(1, orientation == "portrait" ? 2 : 3))
+            {
+                foreach (string fontFamily in new[] { "lato", "dejavu-sans-mono" })
+                {
+                    foreach (int fontSize in new[] { 8, 18 })
+                    {
+                        SongBookPdfInfo pdf = await GenerateAsync(owner, book.Id, new
+                        {
+                            includeChords = false,
+                            songIds = new[] { song.Id },
+                            fontFamily,
+                            fontSize,
+                            orientation,
+                            columns
+                        });
+                        SongBookPdfInfo listed = (await ListAsync(owner, book.Id)).Items.Single(item => item.Id == pdf.Id);
+                        Assert.Equal((fontFamily, fontSize, orientation, columns),
+                            (listed.FontFamily, listed.FontSize, listed.Orientation, listed.Columns));
+                        Assert.False(listed.IsOutdated);
+                        using var document = PdfDocument.Open(await owner.GetByteArrayAsync(
+                            $"/songbooks/{book.Id}/pdfs/{pdf.Id}/download"));
+                        Assert.Equal(orientation == "portrait" ? 595.28 : 841.89, document.GetPage(1).Width, 0.5);
+                    }
+                }
+            }
+        }
+
+        SongBookPdfInfo omittedColumns = await GenerateAsync(owner, book.Id,
+            new { includeChords = true, orientation = "landscape" });
+        Assert.Equal(1, omittedColumns.Columns);
+        await using AsyncServiceScope scope = _factory.Services.CreateAsyncScope();
+        SongBookDbContext db = scope.ServiceProvider.GetRequiredService<SongBookDbContext>();
+        Assert.Equal(1, (await db.Songs.SingleAsync(value => value.Id == song.Id)).Revision);
+        Assert.Equal(1, await db.SongRevisions.CountAsync(value => value.SongId == song.Id));
+        Assert.Equal(1, (await db.SongBooks.SingleAsync(value => value.Id == book.Id)).ContentRevision);
+        Assert.Equal(22, await db.SongBookPdfs.CountAsync(value => value.SongBookId == book.Id));
+        var activities = await db.BookActivities.Where(value => value.SongBookId == book.Id && value.Operation == "pdf.generated")
+            .ToListAsync();
+        Assert.Equal(22, activities.Count);
+        Assert.All(activities, activity =>
+        {
+            Assert.NotNull(activity.ActorId);
+            Assert.Null(activity.SongId);
+            Assert.Null(activity.Revision);
+        });
+        Assert.False((await ListAsync(owner, book.Id)).Items.Single(value => value.Id == defaults.Id).IsOutdated);
+    }
+
+    [Theory]
+    [InlineData("fontFamily", "\"Arial\"")]
+    [InlineData("fontFamily", "\"Lato\"")]
+    [InlineData("fontFamily", "\"\"")]
+    [InlineData("fontSize", "7")]
+    [InlineData("fontSize", "19")]
+    [InlineData("fontSize", "8.5")]
+    [InlineData("orientation", "\"diagonal\"")]
+    [InlineData("columns", "0")]
+    [InlineData("columns", "3")]
+    [InlineData("columns", "1.5")]
+    public async Task InvalidOptionsReturnFieldSpecificErrorsWithoutSaving(string field, string json)
+    {
+        using HttpClient owner = await CreateUserAsync("pdf-invalid-options");
+        SongBookResponse book = await SongBookTestHelpers.CreateBookAsync(owner, "Invalid options");
+        var request = new Dictionary<string, object>
+        {
+            ["includeChords"] = true,
+            [field] = JsonSerializer.Deserialize<JsonElement>(json)
+        };
+        using HttpResponseMessage response = await AuthenticationTestHelpers.PostJsonWithAntiforgeryAsync(
+            owner, $"/songbooks/{book.Id}/pdfs", request);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using JsonDocument problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+        Assert.Empty((await ListAsync(owner, book.Id)).Items);
+        await using AsyncServiceScope scope = _factory.Services.CreateAsyncScope();
+        SongBookDbContext db = scope.ServiceProvider.GetRequiredService<SongBookDbContext>();
+        Assert.False(await db.BookActivities.AnyAsync(value => value.SongBookId == book.Id && value.Operation == "pdf.generated"));
+    }
+
+    [Fact]
+    public async Task PdfMigrationDefaultsExistingRowsWithoutTouchingBytesAndMatchesFreshDatabase()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<SongBookDbContext>().UseSqlite(connection).Options;
+        await using var db = new SongBookDbContext(options);
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261031224223_AddActivitySubjects");
+        Guid bookId = Guid.NewGuid(), pdfId = Guid.NewGuid();
+        byte[] bytes = [37, 80, 68, 70, 45, 49, 46, 55];
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO AspNetUsers (Id, UserName, EmailConfirmed, PhoneNumberConfirmed, TwoFactorEnabled, LockoutEnabled, AccessFailedCount, IsBanned)
+            VALUES ('pdf-migration-owner', 'owner', 0, 0, 0, 0, 0, 0);
+            INSERT INTO SongBooks (Id, Name, NormalizedName, OwnerId, CreatedAtUtc, UpdatedAtUtc, ContentRevision)
+            VALUES ({bookId}, 'Old book', 'OLD BOOK', 'pdf-migration-owner', {DateTimeOffset.UnixEpoch}, {DateTimeOffset.UnixEpoch}, 5);
+            INSERT INTO SongBookPdfs (Id, SongBookId, GeneratedAtUtc, ContentRevision, IncludeChords, IsWholeBook, SongCount, SelectedSongsJson, Content)
+            VALUES ({pdfId}, {bookId}, 0, 4, 1, 1, 0, '[]', {bytes});
+            """);
+        await migrator.MigrateAsync();
+        SongBookPdf old = await db.SongBookPdfs.SingleAsync();
+        Assert.Equal(bytes, old.Content);
+        Assert.Equal(("lato", 10, "portrait", 1), (old.FontFamily, old.FontSize, old.Orientation, old.Columns));
+        Assert.Equal(4, old.ContentRevision);
+        Assert.Equal(5, (await db.SongBooks.SingleAsync()).ContentRevision);
+        Assert.Empty(await db.BookActivities.ToListAsync());
+        Assert.False(db.Database.HasPendingModelChanges());
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        await using var freshConnection = new SqliteConnection("Data Source=:memory:");
+        await freshConnection.OpenAsync();
+        await using var fresh = new SongBookDbContext(
+            new DbContextOptionsBuilder<SongBookDbContext>().UseSqlite(freshConnection).Options);
+        await fresh.Database.MigrateAsync();
+        Assert.False(fresh.Database.HasPendingModelChanges());
+        Assert.Equal(await db.Database.GetAppliedMigrationsAsync(), await fresh.Database.GetAppliedMigrationsAsync());
+    }
+
+    [Fact]
+    public async Task FailedPdfSaveRollsBackStagedActivityAndFileTogether()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<SongBookDbContext>().UseSqlite(connection).Options;
+        Guid bookId = Guid.NewGuid();
+        await using (var db = new SongBookDbContext(options))
+        {
+            await db.Database.MigrateAsync();
+            db.Users.Add(new ApplicationUser { Id = "pdf-rollback-owner", UserName = "Owner" });
+            db.SongBooks.Add(new SongBook
+            {
+                Id = bookId,
+                Name = "Rollback",
+                NormalizedName = "ROLLBACK",
+                OwnerId = "pdf-rollback-owner"
+            });
+            await db.SaveChangesAsync();
+            var mutation = new CurrentMutation { Current = new MutationContext("nonexistent-actor") };
+            var repository = new EfSongBookPdfRepository(db, new EfActivityWriter(db, mutation));
+            await Assert.ThrowsAsync<DbUpdateException>(() => repository.AddAsync(new SongBookPdf
+            {
+                Id = Guid.NewGuid(),
+                SongBookId = bookId,
+                Content = [37, 80, 68, 70],
+                SelectedSongsJson = "[]"
+            }));
+        }
+
+        await using var check = new SongBookDbContext(options);
+        Assert.Empty(await check.SongBookPdfs.ToListAsync());
+        Assert.Empty(await check.BookActivities.ToListAsync());
+        Assert.Equal(0, (await check.SongBooks.SingleAsync()).ContentRevision);
     }
 
     private async Task<HttpClient> CreateUserAsync(string prefix)

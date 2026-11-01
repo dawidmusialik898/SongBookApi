@@ -328,7 +328,10 @@ class FakeElement extends FakeNode {
 
     scrollIntoView() {}
 
-    select() {}
+    select() {
+        this.selectionStart = 0
+        this.selectionEnd = this.value.length
+    }
 
     get elements() {
         const formControls = findElements(
@@ -658,7 +661,8 @@ export const APP_SHELL_IDS = Object.freeze([
 
 export function installAppBrowser({
     api,
-    initialUrl = "https://localhost/"
+    initialUrl = "https://localhost/",
+    clipboard = true
 } = {}) {
     if (api === null || typeof api?.handle !== "function") {
         throw new TypeError("An API with a handle(request) method is required.")
@@ -673,6 +677,19 @@ export function installAppBrowser({
             }
         ])
     )
+    const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator")
+    const clipboardWrites = []
+    const navigatorObject = {
+        clipboard: clipboard === false ? undefined : {
+            async writeText(value) {
+                if (clipboard === "reject") throw new Error("Clipboard denied")
+                clipboardWrites.push(String(value))
+            }
+        }
+    }
+    Object.defineProperty(globalThis, "navigator", {
+        configurable: true, writable: true, value: navigatorObject
+    })
     const document = new FakeDocument()
     const location = new URL(initialUrl)
     const dialogs = []
@@ -850,6 +867,7 @@ export function installAppBrowser({
         document,
         dialogs,
         downloads,
+        clipboardWrites,
         dialogAnswers,
         history,
         location,
@@ -889,6 +907,10 @@ export function installAppBrowser({
             }
         },
         restore() {
+            if (globalThis.navigator === navigatorObject) {
+                if (previousNavigator) Object.defineProperty(globalThis, "navigator", previousNavigator)
+                else delete globalThis.navigator
+            }
             for (const [name, assignedValue] of [
                 ["document", document],
                 ["window", windowObject],

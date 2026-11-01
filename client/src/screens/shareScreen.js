@@ -7,6 +7,7 @@ import {
     setSongBookAccess
 } from "../songBooksApi.js"
 import { findActionTarget, hasLostFocus } from "../ui/dom.js"
+import { createShareLinkControls } from "../ui/shareLinkControls.js"
 import { getSongBookAccessErrorMessage } from "../ui/errors.js"
 import { displayValue, normalizeAccessLevel } from "../ui/format.js"
 import {
@@ -37,9 +38,12 @@ export async function renderShareScreen(ctx) {
         listState,
         moreButton
     } = createShareView({ onSubmit: event => addCollaborator(event) })
+    const readerLink = createShareLinkControls(ctx, bookId, error =>
+        ctx.handleError(error, bookScope()))
     ctx.root.replaceChildren(
         heading,
         intro,
+        readerLink.root,
         shareForm,
         collaboratorList,
         listState,
@@ -130,12 +134,13 @@ export async function renderShareScreen(ctx) {
     shareForm.hidden = false
     collaboratorList.hidden = false
     setMutationBusy(false)
+    await readerLink.load()
 
     if (initialAccessError !== null) {
         await handleCollaboratorLoadError(initialAccessError)
     }
 
-    return { focusTarget: heading }
+    return { focusTarget: heading, cleanup: readerLink.cleanup }
 
     async function addCollaborator(event) {
         event.preventDefault()

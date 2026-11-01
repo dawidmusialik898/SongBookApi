@@ -2,6 +2,8 @@
 
 public sealed record ChordRequest(int? Offset, string? Symbol);
 
+public sealed record CopySongRequest(Guid SourceBookId, Guid SourceSongId);
+
 public sealed record PartRequest(
     Guid? Id,
     string? Name,
@@ -15,7 +17,8 @@ public sealed record SongRequest(
     string? Number,
     string? Key,
     string? Tempo,
-    IReadOnlyList<PartRequest>? Parts);
+    IReadOnlyList<PartRequest>? Parts,
+    long? ExpectedRevision = null);
 
 public sealed record ChordResponse(int Offset, string Symbol);
 
@@ -33,7 +36,8 @@ public sealed record SongResponse(
     string? Number,
     string? Key,
     string? Tempo,
-    IReadOnlyList<PartResponse> Parts);
+    IReadOnlyList<PartResponse> Parts,
+    long Revision = 0);
 
 public sealed record SongSummaryResponse(
     Guid Id,

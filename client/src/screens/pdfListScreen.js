@@ -19,6 +19,9 @@ import { createPagedList } from "../ui/pagedList.js"
 import { downloadPdf, readPdfMetadata } from "../ui/pdf.js"
 
 export async function renderPdfListScreen(ctx) {
+    const readBook = ctx.readApi?.getSongBook ?? getSongBook
+    const readPdfs = ctx.readApi?.getSongBookPdfs ?? getSongBookPdfs
+    const download = ctx.readApi?.downloadSongBookPdf ?? downloadSongBookPdf
     const bookId = ctx.params.bookId
     let bookName = "Untitled song book"
     let accessLevel = null
@@ -65,7 +68,7 @@ export async function renderPdfListScreen(ctx) {
         fetchPage: async (page, signal) => {
             try {
                 const result = readPage(
-                    await getSongBookPdfs(bookId, page, { signal }),
+                    await readPdfs(bookId, page, { signal }),
                     page
                 )
                 return {
@@ -94,8 +97,8 @@ export async function renderPdfListScreen(ctx) {
     list.addEventListener("click", event => handleDownloadClick(event))
 
     const [bookResult, pdfResult] = await Promise.allSettled([
-        getSongBook(bookId, { signal: ctx.signal }),
-        getSongBookPdfs(bookId, 1, { signal: ctx.signal })
+        readBook(bookId, { signal: ctx.signal }),
+        readPdfs(bookId, 1, { signal: ctx.signal })
     ])
     if (!ctx.isCurrent()) {
         return { focusTarget: heading }
@@ -116,7 +119,7 @@ export async function renderPdfListScreen(ctx) {
     }
 
     bookName = displayValue(book.name, "Untitled song book")
-    accessLevel = normalizeAccessLevel(book.accessLevel)
+    accessLevel = ctx.publicRead ? "reader" : normalizeAccessLevel(book.accessLevel)
     ctx.setTitle(["PDF exports", bookName])
     ctx.setBreadcrumb([
         {
@@ -253,6 +256,10 @@ export async function renderPdfListScreen(ctx) {
                 attrs: { datetime: pdf.generatedAtUtc },
                 text: `Created ${createdDate}`
             })),
+        h("p", {
+            className: "pdf-item__meta",
+            text: `${pdf.fontFamily === "lato" ? "Lato" : "DejaVu Sans Mono"} · ${pdf.fontSize} pt · ${pdf.orientation} · ${pdf.columns} column${pdf.columns === 1 ? "" : "s"}`
+        }),
         h("div", { className: "pdf-item__actions" }, downloadButton))
     }
 
@@ -291,7 +298,7 @@ export async function renderPdfListScreen(ctx) {
         const sessionGeneration = ctx.session.state.generation
         setDownloading(true)
         try {
-            const blob = await downloadSongBookPdf(bookId, pdf.id)
+            const blob = await download(bookId, pdf.id, { signal: ctx.signal })
             if (!isRequestCurrent(sessionGeneration)) {
                 return
             }

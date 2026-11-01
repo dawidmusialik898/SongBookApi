@@ -15,7 +15,8 @@ public static class SongBookPdfEndpoints
             .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy);
 
         pdfs.MapGet("", List);
-        pdfs.MapPost("", Generate).AddEndpointFilter<AntiforgeryValidationFilter>();
+        pdfs.MapPost("", Generate).AddEndpointFilter<AntiforgeryValidationFilter>()
+            .AddEndpointFilter<MutationAttributionFilter>();
         pdfs.MapGet("/{pdfId:guid}/download", Download);
     }
 
@@ -63,10 +64,17 @@ public static class SongBookPdfEndpoints
             });
         }
 
+        PdfOptions? options = PdfOptions.Validate(
+            request.FontFamily, request.FontSize, request.Orientation, request.Columns, out var errors);
+        if (options is null)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
         try
         {
             SongBookPdfInfo pdf =
-                await service.GenerateAsync(bookId, request.IncludeChords.Value, request.SongIds);
+                await service.GenerateAsync(bookId, request.IncludeChords.Value, request.SongIds, options);
             return Results.Created($"/songbooks/{bookId}/pdfs/{pdf.Id}/download", pdf);
         }
         catch (ValidationException exception)

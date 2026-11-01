@@ -143,7 +143,13 @@ test("end-to-end flow creates chorded songs, shares, exports a PDF, and switches
             request.method === "POST" &&
             request.path === `/songbooks/${bookId}/pdfs`
         ).at(-1)
-        assert.deepEqual(pdfRequest.body, { includeChords: true })
+        assert.deepEqual(pdfRequest.body, {
+            includeChords: true,
+            fontFamily: "lato",
+            fontSize: 10,
+            orientation: "portrait",
+            columns: 1
+        })
 
         await pdfItem.children.at(-1).children[0].click()
         assert.equal(browser.downloads.length, 1)

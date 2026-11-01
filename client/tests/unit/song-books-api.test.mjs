@@ -228,7 +228,8 @@ test("PDF API pages, generation bodies, and downloads use the nested book URL", 
         )
         await songBooksApi.createSongBookPdf("book / one", {
             includeChords: false,
-            songIds: ["song / one", "song-two"]
+            songIds: ["song / one", "song-two"],
+            fontFamily: "dejavu-sans-mono", fontSize: 18, orientation: "landscape", columns: 3
         })
         const downloaded = await songBooksApi.downloadSongBookPdf(
             "book / one",
@@ -259,7 +260,8 @@ test("PDF API pages, generation bodies, and downloads use the nested book URL", 
         JSON.parse(calls[4].body),
         {
             includeChords: false,
-            songIds: ["song / one", "song-two"]
+            songIds: ["song / one", "song-two"],
+            fontFamily: "dejavu-sans-mono", fontSize: 18, orientation: "landscape", columns: 3
         }
     )
     assert.equal(calls[3].headers["x-csrf-token"], "pdf-csrf")
@@ -281,7 +283,13 @@ test("PDF generation rejects empty, duplicate, and invalid selections before fet
             { includeChords: "true" },
             { includeChords: true, songIds: [] },
             { includeChords: false, songIds: ["song", "song"] },
-            { includeChords: false, songIds: [" "] }
+            { includeChords: false, songIds: [" "] },
+            { includeChords: true, fontFamily: "Arial" },
+            { includeChords: true, fontSize: 18.5 },
+            { includeChords: true, fontSize: 7 },
+            { includeChords: true, orientation: "square" },
+            { includeChords: true, columns: 3 },
+            { includeChords: true, orientation: "landscape", columns: 4 }
         ]) {
             assert.throws(
                 () => songBooksApi.createSongBookPdf("book", payload),

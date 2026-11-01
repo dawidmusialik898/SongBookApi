@@ -6,6 +6,7 @@ import { createRouter } from "./router.js"
 import { createShell } from "./ui/shell.js"
 import { createStatus } from "./ui/status.js"
 import { createDrafts } from "./drafts.js"
+import { parseLocation, resolveRoute } from "./routes.js"
 
 const SHELL_ELEMENTS = [
     ["appBar", "app-bar"],
@@ -108,11 +109,21 @@ export function startApp() {
         }
     })
 
+    const publicRead = resolveRoute(parseLocation(window.location.hash)).route.publicRead &&
+        !ctx.auth.forceAuth
+    const sessionLoad = ctx.session.load()
     const initialRender = ctx.router.render({ initial: true })
-    const ready = Promise.all([
-        initialRender,
-        ctx.session.load()
-    ]).then(() => ctx.router.start())
+    const ready = publicRead
+        ? initialRender
+        : Promise.all([initialRender, sessionLoad]).then(() => ctx.router.start())
+    if (publicRead) {
+        void sessionLoad.then(() => {
+            ctx.shell.renderAccountMenu()
+            if (!ctx.router.current?.route.publicRead) {
+                return ctx.router.render()
+            }
+        })
+    }
     return {
         ready,
         navigate: ctx.router.navigate,

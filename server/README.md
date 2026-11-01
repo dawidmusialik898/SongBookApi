@@ -74,6 +74,11 @@ All `/songbooks` and nested song routes require a confirmed, authenticated
 Identity session. Anonymous requests return `401`. Obtain a request token from
 `GET /auth/antiforgery` and send it as `X-CSRF-TOKEN` on every
 `POST`, `PUT`, and `DELETE`. Cookie authentication never redirects API callers.
+Owner-only `/songbooks/{bookId}/share-link` GET/POST/DELETE manages separate
+anonymous reader capabilities. Only GET operations under `/shared/songbooks`
+accept `X-SongBook-Share-Token`; they never grant private membership or mutations.
+See [read-only links](../docs/read-only-share-links.md) for routes, safeguards,
+rate limits and the `AddReadOnlyShareLinks` migration.
 
 Account routes remain:
 
@@ -184,10 +189,17 @@ Admin and cannot have an access entry.
 | --- | --- | --- | --- |
 | `GET` | `/songbooks/{bookId}/songs?page=N&search=TEXT` | Reader | `200` paged song summaries |
 | `POST` | `/songbooks/{bookId}/songs` | Editor | `201` song |
+| `POST` | `/songbooks/{bookId}/songs/copy` | Source Reader + destination Editor | `201` song |
 | `GET` | `/songbooks/{bookId}/songs/{songId}` | Reader | `200` song |
 | `GET` | `/songbooks/{bookId}/songs/{songId}/adjacent` | Reader | `200` previous/next summaries |
 | `PUT` | `/songbooks/{bookId}/songs/{songId}` | Editor | `204` |
 | `DELETE` | `/songbooks/{bookId}/songs/{songId}` | Editor | `204` |
+
+The copy body is `{ "sourceBookId": "guid", "sourceSongId": "guid" }`.
+It creates an independent graph and `song.copied` revision/activity in one
+transaction, returning the ordinary song response and destination Location.
+Same-book copying is rejected; public-link access cannot authorize copying.
+See [copy behavior and client workflow](../docs/copy-songs.md).
 
 The former unscoped `/songs` routes do not exist. Route IDs are authoritative;
 the body never accepts `songBookId` and cannot redirect an update.
@@ -270,11 +282,12 @@ current Reader, Editor, or owner can view and download saved exports. A
 removed collaborator loses access to both the list and the download route
 immediately; a PDF is never exposed as a public static file.
 
-Chorded PDFs print each lyric line in a monospace font beneath one row of
+Chorded PDFs print each lyric line in a bundled monospace font beneath its rows of
 its chords. As in the song view, when chords sit closer together than their
 symbols are wide, the lyric spacing widens instead of the symbols
-overlapping; long lines wrap between words. A song, part, or chord row that
-would straddle a page break moves to the next page when it fits there.
+overlapping; long lines wrap between words, with unbroken text split when needed.
+Oversized symbols wrap into extra rows above the same anchor. Compact songs/parts
+stay together when possible, while long groups split across columns/pages.
 
 | Method | Path | Minimum access | Success |
 | --- | --- | --- | --- |
@@ -288,8 +301,24 @@ distinct song IDs belonging to that book. Songs appear in title/ID order,
 as in the paged song list:
 
 ```json
-{ "includeChords": true, "songIds": ["song-guid", "another-song-guid"] }
+{
+  "includeChords": true,
+  "songIds": ["song-guid", "another-song-guid"],
+  "fontFamily": "lato",
+  "fontSize": 10,
+  "orientation": "portrait",
+  "columns": 1
+}
 ```
+
+Customization fields are optional: `fontFamily` is `lato` or `dejavu-sans-mono`,
+`fontSize` is an integer 8-18 pt, `orientation` is `portrait` or `landscape`,
+and `columns` is 1-2 in portrait or 1-3 in landscape. Omitted/null fields use
+the example defaults (landscape also defaults to one column in the API).
+Invalid options return field-specific `400` errors. Actual A4 pages flow songs
+down columns, across columns, then onto pages; headers/footers remain full-width.
+Chorded lyrics stay monospace and their 9 pt default grid scales proportionally
+with the selected 10 pt body default. See [PDF customization](../docs/pdf-customization.md).
 
 `includeChords` is required. Invalid selections return `400`, an unknown or
 inaccessible book/export returns `404`, and a Reader or Editor attempting
@@ -308,7 +337,11 @@ An export's metadata looks like:
     { "id": "another-song-guid", "title": "Second song" }
   ],
   "generatedAtUtc": "2026-09-30T20:00:00Z",
-  "isOutdated": false
+  "isOutdated": false,
+  "fontFamily": "lato",
+  "fontSize": 10,
+  "orientation": "portrait",
+  "columns": 1
 }
 ```
 
@@ -321,15 +354,20 @@ BLOBs under their book and removed when it is deleted; the existing SQLite
 backup/restore includes them. Downloads are sent with `Cache-Control: no-store`
 and use server-constructed attachment filenames.
 
-Apply the `StoreSongBookPdfs` migration before using this feature in
+Apply `StoreSongBookPdfs` and `AddPdfCustomization` (after the history migrations)
+before using this feature in
 Production. PDF rendering uses QuestPDF (Community licensing is free for
 eligible open-source/individual projects; other deployments must check its
 license terms). Chorded lyrics use DejaVu Sans Mono, embedded in the service
 from `src/SongBookApi.Service/Resources/Fonts/` (its license is alongside and
-ships with the build); other text uses QuestPDF's bundled Lato. Output
+ships with the build); other text uses the selected bundled family. Output
 therefore does not depend on fonts installed on the host. Characters neither
 font covers, such as emoji or CJK text, print as placeholder glyphs instead of
 failing the export.
+
+The customization migration defaults existing metadata without rewriting stored
+bytes. Successful generation records `pdf.generated` activity in the same
+transaction as the file save, without advancing book content or song revisions.
 
 ## Paged collections
 
@@ -385,6 +423,22 @@ the song-book/title/ID order used for pages.
 Deleting a book cascades to its songs, parts, chords, PDFs, and access entries. Deleting a
 collaborator account cascades its access rows. Owner account deletion is
 restricted so it cannot silently delete owned books.
+
+## Private change history
+
+Song detail responses include an independent `revision`. Updates optionally
+accept `expectedRevision` in JSON; deletes accept it in the query string.
+Stale values return `409`; omission preserves legacy last-write behavior.
+Private book and song `/history` routes provide paged summaries and on-demand
+full snapshots, including deleted songs. Editor/owner restore requests require
+antiforgery and the latest expected revision and append rather than overwrite
+history. Only owners receive access/link-management activity.
+
+Apply `AddChangeHistory` and `AddActivitySubjects`. Existing songs begin at
+revision 0 and lazily receive an unknown baseline before their first mutation.
+History cascades only from book deletion; nullable actor/subject references
+allow account deletion without retaining email snapshots. See
+[the complete history API and shared writer contract](../docs/change-history.md).
 
 ## Validation
 

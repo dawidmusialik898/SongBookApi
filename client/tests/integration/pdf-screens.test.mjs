@@ -353,7 +353,9 @@ test("owners can create a whole-book PDF with the default chord option", async (
             request.method === "POST" &&
             request.path === `/songbooks/${bookId}/pdfs`
         )
-        assert.deepEqual(createdRequest.body, { includeChords: true })
+        assert.deepEqual(createdRequest.body, {
+            includeChords: true, fontFamily: "lato", fontSize: 10, orientation: "portrait", columns: 1
+        })
         assert.equal(browser.text("app-status-message"), "PDF created.")
         assert.equal(
             browser.document.getElementById("pdf-list").children.length,
@@ -455,10 +457,104 @@ test("selected-song PDFs preserve selections across search and pagination", asyn
         )
         assert.deepEqual(createdRequest.body, {
             includeChords: true,
+            fontFamily: "lato", fontSize: 10, orientation: "portrait", columns: 1,
             songIds: [songIds[0], songIds[54]]
         })
         assert.equal(browser.text("app-status-message"), "PDF created.")
     } finally {
+        browser.restore()
+    }
+})
+
+test("custom PDF controls validate, suggest columns, stay busy and retain selection/options on failure", async () => {
+    const api = createFakeApi()
+    api.seed.account("owner@example.com")
+    const bookId = api.seed.book({ owner: "owner@example.com", name: "Customized" })
+    const songId = api.seed.song(bookId, { title: "Chosen" })
+    api.signIn("owner@example.com")
+    let release
+    let started
+    const gate = new Promise(resolve => { release = resolve })
+    const pending = new Promise(resolve => { started = resolve })
+    let fail = true
+    api.intercept(async request => {
+        if (request.method === "POST" && request.path === `/songbooks/${bookId}/pdfs` && fail) {
+            started()
+            await gate
+            fail = false
+            return { status: 503, body: null }
+        }
+        return undefined
+    })
+    const { app, browser } = createAppHarness(api, {
+        initialUrl: `https://localhost/#/books/${bookId}/pdfs/new`
+    })
+    const control = id => browser.document.getElementById(id)
+    try {
+        await app.ready
+        assert.equal(control("pdf-font-family").value, "lato")
+        assert.equal(control("pdf-font-size").value, "10")
+        assert.equal(control("pdf-orientation").value, "portrait")
+        assert.equal(control("pdf-columns").value, "1")
+        assert.match(browser.text("pdf-chord-font-help"), /always use bundled DejaVu Sans Mono/)
+        for (const id of ["pdf-font-family", "pdf-font-size", "pdf-orientation", "pdf-columns"]) {
+            assert.equal(control(id).parentNode.children[0].getAttribute("for"), id)
+        }
+        await control("pdf-font-size").input("8.5")
+        await control("pdf-form").submit()
+        assert.match(browser.text("pdf-form-error"), /integer font size from 8 to 18/)
+        assert.equal(api.requests.some(request => request.method === "POST" && request.path.endsWith("/pdfs")), false)
+        control("pdf-orientation").value = "landscape"
+        await control("pdf-orientation").dispatch("change")
+        assert.equal(control("pdf-columns").value, "2")
+        assert.equal(control("pdf-columns").children[2].disabled, false)
+        control("pdf-columns").value = "3"
+        control("pdf-orientation").value = "portrait"
+        await control("pdf-orientation").dispatch("change")
+        assert.equal(control("pdf-columns").value, "1")
+        assert.equal(control("pdf-columns").children[2].disabled, true)
+        control("pdf-orientation").value = "landscape"
+        await control("pdf-orientation").dispatch("change")
+        control("pdf-columns").value = "3"
+        control("pdf-font-family").value = "dejavu-sans-mono"
+        await control("pdf-font-size").input("18")
+        await control("pdf-scope-selected").click()
+        await browser.settle()
+        const checkbox = control("pdf-song-list").children[0].children[0].children[0]
+        await checkbox.click()
+        const generation = control("pdf-form").submit()
+        await pending
+        for (const id of [
+            "pdf-font-family", "pdf-font-size", "pdf-orientation", "pdf-columns",
+            "pdf-scope-whole", "pdf-scope-selected", "pdf-include-chords",
+            "pdf-song-search", "show-more-pdf-songs", "create-pdf-button"
+        ]) {
+            assert.equal(control(id).disabled, true, id)
+        }
+        assert.equal(checkbox.disabled, true)
+        assert.equal(control("pdf-form").getAttribute("aria-busy"), "true")
+        release()
+        await generation
+        assert.equal(browser.screen(), "pdf-new")
+        assert.equal(control("pdf-font-family").value, "dejavu-sans-mono")
+        assert.equal(control("pdf-font-size").value, "18")
+        assert.equal(control("pdf-orientation").value, "landscape")
+        assert.equal(control("pdf-columns").value, "3")
+        assert.equal(checkbox.checked, true)
+        assert.equal(checkbox.disabled, false)
+        assert.equal(control("pdf-form").getAttribute("aria-busy"), "false")
+        assert.match(browser.text("app-status-message"), /Could not generate/)
+        await control("pdf-form").submit()
+        const requests = api.requests.filter(request => request.method === "POST" && request.path.endsWith("/pdfs"))
+        assert.equal(requests.length, 2)
+        assert.deepEqual(requests[1].body, {
+            includeChords: true, songIds: [songId],
+            fontFamily: "dejavu-sans-mono", fontSize: 18, orientation: "landscape", columns: 3
+        })
+        assert.equal(browser.screen(), "pdfs")
+        assert.match(control("pdf-list").textContent, /DejaVu Sans Mono · 18 pt · landscape · 3 columns/)
+    } finally {
+        release()
         browser.restore()
     }
 })

@@ -4,6 +4,7 @@ public class Song
 {
     public Guid Id { get; set; }
     public Guid SongBookId { get; set; }
+    public long Revision { get; set; }
     public string? Title { get; set; }
     public string? Author { get; set; }
     public string? OriginalTitle { get; set; }

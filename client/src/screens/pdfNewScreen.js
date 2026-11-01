@@ -14,7 +14,7 @@ import {
     displayValue,
     normalizeAccessLevel
 } from "../ui/format.js"
-import { readPdfMetadata } from "../ui/pdf.js"
+import { pdfOptionErrors, readPdfMetadata } from "../ui/pdf.js"
 
 export async function renderPdfNewScreen(ctx) {
     const bookId = ctx.params.bookId
@@ -23,6 +23,7 @@ export async function renderPdfNewScreen(ctx) {
     let songsLoaded = false
     let isGenerating = false
     const selectedSongs = new Map()
+    const songCheckboxes = new Set()
 
     ctx.setTitle(["New PDF"])
     ctx.setBreadcrumb([{ text: "New PDF" }])
@@ -58,6 +59,30 @@ export async function renderPdfNewScreen(ctx) {
         id: "pdf-include-chords",
         type: "checkbox",
         attrs: { checked: true }
+    })
+    const fontFamily = select("pdf-font-family", [
+        ["lato", "Lato"], ["dejavu-sans-mono", "DejaVu Sans Mono"]
+    ], "lato")
+    const fontSize = h("input", {
+        id: "pdf-font-size", type: "number",
+        attrs: { min: "8", max: "18", step: "1", required: true, value: "10" }
+    })
+    const orientation = select("pdf-orientation", [
+        ["portrait", "Portrait"], ["landscape", "Landscape"]
+    ], "portrait")
+    const columns = select("pdf-columns", [
+        ["1", "1"], ["2", "2"], ["3", "3"]
+    ], "1")
+    columns.children[2].disabled = true
+    orientation.addEventListener("change", () => {
+        const landscape = orientation.value === "landscape"
+        columns.children[2].disabled = !landscape
+        if (landscape) {
+            columns.value = "2"
+        } else if (Number(columns.value) > 2) {
+            columns.value = "1"
+        }
+        clearFormError()
     })
     const songSearchInput = h("input", {
         id: "pdf-song-search",
@@ -107,11 +132,12 @@ export async function renderPdfNewScreen(ctx) {
         disabled: true,
         text: "Show more"
     })
-    const songPicker = h("section", {
+    const songPicker = h("fieldset", {
         id: "pdf-song-picker",
         className: "pdf-song-picker",
         hidden: true
     },
+    h("legend", { text: "Selected songs" }),
     songSearchForm,
     songList,
     songListState,
@@ -149,6 +175,16 @@ export async function renderPdfNewScreen(ctx) {
     h("label", { className: "checkbox-field" },
         includeChords,
         h("span", { text: "Include chords" })),
+    h("fieldset", {},
+        h("legend", { text: "Typography and layout" }),
+        field("Font family", fontFamily),
+        field("Font size (pt)", fontSize),
+        field("Orientation", orientation),
+        field("Columns", columns),
+        h("p", {
+            id: "pdf-chord-font-help",
+            text: "Chorded lyrics always use bundled DejaVu Sans Mono for accurate chord alignment. Font size scales the 9 pt chord grid proportionally."
+        })),
     formError,
     h("div", { className: "pdf-form__actions" },
         h("a", {
@@ -268,6 +304,8 @@ export async function renderPdfNewScreen(ctx) {
             }
         })
         checkbox.checked = selectedSongs.has(song.id)
+        checkbox.disabled = isGenerating
+        songCheckboxes.add(checkbox)
         return h("li", {},
             h("label", { className: "pdf-song-option" },
                 checkbox,
@@ -284,6 +322,9 @@ export async function renderPdfNewScreen(ctx) {
     }
 
     function updateSelection(song, selected) {
+        if (isGenerating) {
+            return
+        }
         if (selected) {
             selectedSongs.set(
                 song.id,
@@ -304,6 +345,9 @@ export async function renderPdfNewScreen(ctx) {
     }
 
     function updateScope() {
+        if (isGenerating) {
+            return
+        }
         clearDebounce()
         const choosingSongs = selectedSongsRadio.checked
         songPicker.hidden = !choosingSongs
@@ -317,6 +361,7 @@ export async function renderPdfNewScreen(ctx) {
     async function searchNow() {
         if (
             !ctx.isCurrent() ||
+            isGenerating ||
             !selectedSongsRadio.checked
         ) {
             return
@@ -341,17 +386,31 @@ export async function renderPdfNewScreen(ctx) {
             formError.hidden = false
             return
         }
+        const options = {
+            fontFamily: fontFamily.value,
+            fontSize: Number(fontSize.value),
+            orientation: orientation.value,
+            columns: Number(columns.value)
+        }
+        const optionErrors = pdfOptionErrors(options)
+        if (Object.keys(optionErrors).length !== 0) {
+            formError.textContent = Object.values(optionErrors).join(" ")
+            formError.hidden = false
+            return
+        }
         clearFormError()
 
         const payload = {
             includeChords: includeChords.checked,
+            ...options,
             ...(choosingSongs
                 ? { songIds: [...selectedSongs.keys()] }
                 : {})
         }
         const sessionGeneration = ctx.session.state.generation
+        clearDebounce()
         isGenerating = true
-        createButton.disabled = true
+        setBusy(true)
         try {
             readPdfMetadata(await createSongBookPdf(bookId, payload))
             if (!isRequestCurrent(sessionGeneration)) {
@@ -386,6 +445,7 @@ export async function renderPdfNewScreen(ctx) {
             ctx.status.show("error", getGeneratePdfErrorMessage(error))
         } finally {
             isGenerating = false
+            setBusy(false)
             createButton.disabled = !ctx.isCurrent()
             if (ctx.isCurrent() && hasLostFocus()) {
                 createButton.focus()
@@ -396,6 +456,19 @@ export async function renderPdfNewScreen(ctx) {
     function clearFormError() {
         formError.textContent = ""
         formError.hidden = true
+    }
+
+    function setBusy(busy) {
+        for (const control of [
+            wholeBookRadio, selectedSongsRadio, includeChords, fontFamily,
+            fontSize, orientation, columns, songSearchInput, createButton,
+            songPicker,
+            ...songCheckboxes
+        ]) {
+            control.disabled = busy
+        }
+        moreSongsButton.disabled = busy || !pagedList.snapshot().hasNext
+        pdfForm.setAttribute("aria-busy", String(busy))
     }
 
     function clearDebounce() {
@@ -417,5 +490,17 @@ export async function renderPdfNewScreen(ctx) {
             signal: ctx.signal,
             isCurrent: ctx.isCurrent
         }
+    }
+
+    function select(id, values, initial) {
+        const control = h("select", { id }, ...values.map(([value, text]) =>
+            h("option", { attrs: { value }, text })))
+        control.value = initial
+        return control
+    }
+
+    function field(text, control) {
+        return h("div", { className: "form-field" },
+            h("label", { attrs: { for: control.id }, text }), control)
     }
 }

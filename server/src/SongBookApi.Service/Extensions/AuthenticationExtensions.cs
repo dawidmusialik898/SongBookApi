@@ -1,4 +1,3 @@
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
@@ -7,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
+using System.Threading.RateLimiting;
 
 namespace SongBookApi.Service.Extensions;
 
@@ -123,6 +123,7 @@ public static class AuthenticationExtensions
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddPolicy("login", context => CreateLimiter(context, 10, TimeSpan.FromMinutes(1)));
             options.AddPolicy("email", context => CreateLimiter(context, 5, TimeSpan.FromMinutes(15)));
+            options.AddPolicy("shared-read", context => CreateLimiter(context, 60, TimeSpan.FromMinutes(1), stableUnknownIp: true));
         });
 
         if (environment.IsDevelopment())
@@ -176,9 +177,11 @@ public static class AuthenticationExtensions
     private static RateLimitPartition<string> CreateLimiter(
         HttpContext context,
         int permitLimit,
-        TimeSpan window)
+        TimeSpan window,
+        bool stableUnknownIp = false)
     {
-        string remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? context.TraceIdentifier;
+        string remoteIp = context.Connection.RemoteIpAddress?.ToString() ??
+            (stableUnknownIp ? "unknown" : context.TraceIdentifier);
         return RateLimitPartition.GetFixedWindowLimiter(
             remoteIp,
             _ => new FixedWindowRateLimiterOptions

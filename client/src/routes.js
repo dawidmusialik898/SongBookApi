@@ -6,7 +6,11 @@ import { renderPdfNewScreen } from "./screens/pdfNewScreen.js"
 import { renderShareScreen } from "./screens/shareScreen.js"
 import { renderSongScreen } from "./screens/songScreen.js"
 import { renderSongEditorScreen } from "./screens/songEditorScreen.js"
+import { renderSongCopyScreen } from "./screens/songCopyScreen.js"
 import { renderUsersScreen } from "./screens/usersScreen.js"
+import { renderHistoryScreen } from "./screens/historyScreen.js"
+import { renderHistoryCompareScreen } from "./screens/historyCompareScreen.js"
+import { renderSharedScreen } from "./screens/sharedScreen.js"
 
 const NOT_FOUND_ROUTE = Object.freeze({
     name: "not-found",
@@ -18,6 +22,34 @@ const NOT_FOUND_ROUTE = Object.freeze({
 })
 
 const ROUTES = [
+    ...[
+        ["shared-book", ["shared", "books", ":bookId", ":token"]],
+        ["shared-song", ["shared", "books", ":bookId", ":token", "songs", ":songId"]],
+        ["shared-pdfs", ["shared", "books", ":bookId", ":token", "pdfs"]]
+    ].map(([name, segments]) => ({
+        name, screenName: name, segments, publicRead: true,
+        minimumAccess: "anyone", focusMode: false, render: renderSharedScreen
+    })),
+    {
+        name: "song-copy", screenName: "song-copy",
+        segments: ["books", ":bookId", "songs", ":songId", "copy"],
+        minimumAccess: "reader", focusMode: false, render: renderSongCopyScreen
+    },
+    {
+        name: "book-history", screenName: "history",
+        segments: ["books", ":bookId", "history"],
+        minimumAccess: "reader", focusMode: false, render: renderHistoryScreen
+    },
+    {
+        name: "song-history", screenName: "history",
+        segments: ["books", ":bookId", "songs", ":songId", "history"],
+        minimumAccess: "reader", focusMode: false, render: renderHistoryScreen
+    },
+    {
+        name: "song-history-compare", screenName: "history-compare",
+        segments: ["books", ":bookId", "songs", ":songId", "history", "compare"],
+        minimumAccess: "reader", focusMode: false, render: renderHistoryCompareScreen
+    },
     {
         name: "library",
         screenName: "library",
@@ -111,7 +143,7 @@ export function buildHref(name, params = {}, query = {}) {
                 ))
                 : segment
         ).join("/")}`
-    if (name !== "book") {
+    if (name !== "book" && name !== "shared-book") {
         return `#${path}`
     }
 
@@ -188,7 +220,7 @@ export function resolveRoute(location) {
             return {
                 route,
                 params,
-                query: route.name === "book"
+                query: route.name === "book" || route.name === "shared-book"
                     ? { ...(location.query.q === undefined
                         ? {}
                         : { q: location.query.q }) }

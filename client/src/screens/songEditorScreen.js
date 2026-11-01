@@ -161,7 +161,8 @@ export async function renderSongEditorScreen(ctx) {
         songPath,
         bookPath,
         serverModel,
-        restoredModel
+        restoredModel,
+        serverRevision: song?.revision ?? 0
     })
 }
 
@@ -218,7 +219,9 @@ function readDraftModel(draft, {
     return {
         fields,
         parts,
-        simplified: [...serverModel.simplified]
+        simplified: [...serverModel.simplified],
+        expectedRevision: Number.isSafeInteger(draft.expectedRevision)
+            ? draft.expectedRevision : undefined
     }
 }
 

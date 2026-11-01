@@ -19,7 +19,9 @@ const METADATA = {
 }
 
 test("PDF metadata validation accepts complete values and rejects malformed values", () => {
-    assert.equal(readPdfMetadata(METADATA), METADATA)
+    assert.deepEqual(readPdfMetadata(METADATA), {
+        ...METADATA, fontFamily: "lato", fontSize: 10, orientation: "portrait", columns: 1
+    })
     for (const invalid of [
         null,
         { ...METADATA, id: " " },
@@ -30,10 +32,20 @@ test("PDF metadata validation accepts complete values and rejects malformed valu
             selectedSongs: [{ id: "song", title: null }]
         },
         { ...METADATA, generatedAtUtc: "not a date" },
-        { ...METADATA, isOutdated: 0 }
+        { ...METADATA, isOutdated: 0 },
+        { ...METADATA, fontFamily: "Arial" },
+        { ...METADATA, fontFamily: null },
+        { ...METADATA, fontSize: 7 },
+        { ...METADATA, fontSize: 10.5 },
+        { ...METADATA, orientation: "diagonal" },
+        { ...METADATA, columns: 3 },
+        { ...METADATA, orientation: "landscape", columns: 4 }
     ]) {
         assert.throws(() => readPdfMetadata(invalid), ApiError)
     }
+    assert.equal(readPdfMetadata({
+        ...METADATA, fontFamily: "dejavu-sans-mono", fontSize: 18, orientation: "landscape", columns: 3
+    }).columns, 3)
 })
 
 test("PDF filenames sanitize book names and IDs and include the PDF variant", () => {

@@ -341,6 +341,37 @@ test("song CRUD preserves omitted chords and replaces them when supplied", async
     assert.ok(createdSong.parts[0].id)
 })
 
+test("fake history lazily baselines existing songs, rejects stale writes and protects restoration", async () => {
+    const api = createFakeApi()
+    api.seed.account("owner@example.com")
+    api.seed.account("reader@example.com")
+    const bookId = api.seed.book({ owner: "owner@example.com", name: "History" })
+    api.seed.access(bookId, "reader@example.com", "reader")
+    const songId = api.seed.song(bookId, { title: "Imported", parts: [{ text: "😀old", chords: [{ offset: 0, symbol: "Am" }] }] })
+    api.signIn("owner@example.com")
+    const headers = tokenHeaders(await getAntiforgeryToken(api))
+    const path = `/songbooks/${bookId}/songs/${songId}`
+    assert.equal((await (await send(api, "GET", `${path}/history`)).json()).latestRevision, 0)
+    assert.equal((await send(api, "PUT", path, { headers, body: {
+        expectedRevision: 0, parts: [{ id: "unknown", text: "bad" }]
+    } })).status, 400)
+    assert.equal((await (await send(api, "GET", `${path}/history`)).json()).latestRevision, 0)
+    assert.equal((await send(api, "PUT", path, { headers, body: { title: "Tracked", parts: [], expectedRevision: 0, actorId: "spoofed" } })).status, 204)
+    const baseline = await (await send(api, "GET", `${path}/history/1`)).json()
+    assert.equal(baseline.summary.actor, "Unknown (tracking baseline)")
+    assert.equal(baseline.snapshot.song.parts[0].text, "😀old")
+    assert.equal((await send(api, "DELETE", path, { headers, query: { expectedRevision: "1" } })).status, 409)
+    assert.equal((await send(api, "POST", `${path}/history/1/restore`, { body: { expectedRevision: 2 } })).status, 400)
+    api.signIn("reader@example.com")
+    assert.equal((await send(api, "POST", `${path}/history/1/restore`, { headers, body: { expectedRevision: 2 } })).status, 403)
+    api.signIn("owner@example.com")
+    assert.equal((await send(api, "POST", `${path}/history/1/restore`, { headers, body: { expectedRevision: 2 } })).status, 200)
+    const restored = await (await send(api, "GET", `${path}/history/3`)).json()
+    assert.equal(restored.summary.actor, "owner@example.com")
+    assert.equal(restored.summary.restoredFromRevision, 1)
+    assert.equal(restored.snapshot.song.parts[0].text, baseline.snapshot.song.parts[0].text)
+})
+
 test("PDF access, metadata, downloads, and stale state follow server rules", async () => {
     const api = createFakeApi()
     api.seed.account("owner@example.com")
@@ -371,7 +402,8 @@ test("PDF access, metadata, downloads, and stale state follow server rules", asy
     const generated = await send(api, "POST", pdfUrl, {
         body: {
             includeChords: true,
-            songIds: [laterId, earlierId]
+            songIds: [laterId, earlierId],
+            fontFamily: "dejavu-sans-mono", fontSize: 18, orientation: "landscape", columns: 3
         },
         headers: tokenHeaders(token)
     })
@@ -379,6 +411,10 @@ test("PDF access, metadata, downloads, and stale state follow server rules", asy
     const generatedPdf = await generated.json()
     assert.equal(generatedPdf.isWholeBook, false)
     assert.equal(generatedPdf.songCount, 2)
+    assert.deepEqual(
+        [generatedPdf.fontFamily, generatedPdf.fontSize, generatedPdf.orientation, generatedPdf.columns],
+        ["dejavu-sans-mono", 18, "landscape", 3]
+    )
     assert.deepEqual(
         generatedPdf.selectedSongs.map(song => song.id),
         [earlierId, laterId]
@@ -392,6 +428,25 @@ test("PDF access, metadata, downloads, and stale state follow server rules", asy
     const newestFirst = await send(api, "GET", pdfUrl)
     const newestFirstItems = (await newestFirst.json()).items
     assert.equal(newestFirstItems.at(-1).id, savedPdfId)
+    assert.deepEqual(
+        [newestFirstItems.at(-1).fontFamily, newestFirstItems.at(-1).fontSize,
+            newestFirstItems.at(-1).orientation, newestFirstItems.at(-1).columns],
+        ["lato", 10, "portrait", 1]
+    )
+    for (const [field, value] of [
+        ["fontFamily", "Arial"], ["fontSize", 8.5], ["orientation", "diagonal"], ["columns", 3]
+    ]) {
+        const rejected = await send(api, "POST", pdfUrl, {
+            body: { includeChords: true, [field]: value },
+            headers: tokenHeaders(token)
+        })
+        assert.equal(rejected.status, 400)
+        assert.ok((await rejected.json()).errors[field])
+    }
+    assert.equal((await (await send(api, "GET", pdfUrl)).json()).items.length, 3)
+    const activity = await (await send(api, "GET", `/songbooks/${bookId}/history`)).json()
+    assert.equal(activity.items.filter(item => item.operation === "pdf.generated").length, 2)
+    assert.equal(generatedPdf.isOutdated, false)
     assert.equal(
         (await send(api, "POST", pdfUrl, {
             body: { includeChords: true, songIds: [] },

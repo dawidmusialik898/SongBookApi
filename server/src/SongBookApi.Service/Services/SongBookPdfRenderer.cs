@@ -6,6 +6,7 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Repositories;
+using SongBookApi.Domain.Services;
 
 namespace SongBookApi.Service.Services;
 
@@ -15,12 +16,17 @@ internal static class SongBookPdfRenderer
     private const string TextFont = "Lato";
     private const string MonospaceFont = "DejaVu Sans Mono";
     private const float ChordedFontSize = 9;
+    internal const float Margin = 42;
+    internal const float Gutter = 18;
+    // Both bundled DejaVu Sans Mono faces have a 1233/2048-em cell advance.
+    private const float MonospaceAdvance = 1233f / 2048;
     private const int TabWidth = 4;
     private static readonly Color ChordColor = Color.FromHex("#1D4ED8");
 
     static SongBookPdfRenderer()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        QuestPDF.Settings.UseSystemFonts = false;
         // Lyrics accept any Unicode text; glyphs that no bundled font covers (such as emoji)
         // become replacement characters instead of failing the whole export.
         QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
@@ -35,26 +41,34 @@ internal static class SongBookPdfRenderer
     public static byte[] Render(
         SongBookPdfSnapshot snapshot,
         bool includeChords,
-        DateTimeOffset generatedAtUtc)
-        => Compose(snapshot, includeChords, generatedAtUtc).GeneratePdf();
+        DateTimeOffset generatedAtUtc,
+        PdfOptions? options = null)
+        => Compose(snapshot, includeChords, generatedAtUtc, options).GeneratePdf();
 
     internal static IDocument Compose(
         SongBookPdfSnapshot snapshot,
         bool includeChords,
-        DateTimeOffset generatedAtUtc)
-        => Document.Create(document =>
+        DateTimeOffset generatedAtUtc,
+        PdfOptions? options = null)
+    {
+        options ??= PdfOptions.Default;
+        float scale = options.FontSize / 10f;
+        string font = options.FontFamily == "lato" ? TextFont : MonospaceFont;
+        int capacity = WrapCapacity(options);
+        return Document.Create(document =>
         {
             document.Page(page =>
             {
-                page.Size(PageSizes.A4);
-                page.Margin(42);
-                page.DefaultTextStyle(style => style.FontFamily(TextFont, MonospaceFont).FontSize(10));
-                page.Header().Text(snapshot.BookName).Bold().FontSize(14);
-                page.Content().PaddingVertical(16).Column(body =>
+                page.Size(options.Orientation == "landscape" ? PageSizes.A4.Landscape() : PageSizes.A4);
+                page.Margin(Margin);
+                page.DefaultTextStyle(style => style.FontFamily(font, MonospaceFont).FontSize(options.FontSize));
+                page.Header().Text(snapshot.BookName).Bold().FontSize(14 * scale);
+                IContainer content = page.Content().PaddingVertical(16);
+                void ComposeBody(ColumnDescriptor body)
                 {
-                    body.Spacing(16);
+                    body.Spacing(16 * scale);
                     body.Item().Text(includeChords ? "Songs with chords" : "Lyrics only")
-                        .FontSize(9);
+                        .FontSize(9 * scale);
                     if (snapshot.Songs.Count == 0)
                     {
                         body.Item().Text("No songs in this book.");
@@ -62,16 +76,34 @@ internal static class SongBookPdfRenderer
 
                     foreach (Song song in snapshot.Songs)
                     {
-                        body.Item().PreventPageBreak().Column(section =>
-                            ComposeSong(section, song, includeChords));
+                        IContainer section = EstimatedSongHeight(song, includeChords, scale, capacity) <= 180
+                            ? body.Item().PreventPageBreak()
+                            : body.Item().EnsureSpace(45 * scale);
+                        section.Column(column =>
+                            ComposeSong(column, song, includeChords, scale, capacity));
                     }
-                });
+                }
+
+                if (options.Columns == 1)
+                {
+                    content.Column(ComposeBody);
+                }
+                else
+                {
+                    content.MultiColumn(columns =>
+                    {
+                        columns.Columns(options.Columns);
+                        columns.Spacing(Gutter);
+                        columns.BalanceHeight(false);
+                        columns.Content().Column(ComposeBody);
+                    });
+                }
                 page.Footer().Row(footer =>
                 {
                     footer.RelativeItem().Text(
                         $"Generated {generatedAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)}")
-                        .FontSize(8);
-                    footer.AutoItem().DefaultTextStyle(style => style.FontSize(8)).Text(text =>
+                        .FontSize(8 * scale);
+                    footer.AutoItem().DefaultTextStyle(style => style.FontSize(8 * scale)).Text(text =>
                     {
                         text.Span("Page ");
                         text.CurrentPageNumber();
@@ -85,15 +117,29 @@ internal static class SongBookPdfRenderer
             CreationDate = generatedAtUtc,
             ModifiedDate = generatedAtUtc
         });
+    }
 
-    private static void ComposeSong(ColumnDescriptor section, Song song, bool includeChords)
+    internal static int WrapCapacity(PdfOptions options)
     {
-        section.Spacing(7);
+        if (options.Orientation == "portrait" && options.Columns == 1 && options.FontSize == 10)
+        {
+            return MaxColumns;
+        }
+
+        float width = options.Orientation == "landscape" ? PageSizes.A4.Height : PageSizes.A4.Width;
+        float usable = (width - 2 * Margin - (options.Columns - 1) * Gutter) / options.Columns;
+        return Math.Max(1, (int)Math.Floor((usable - 1) / (ChordedFontSize * options.FontSize / 10f * MonospaceAdvance)));
+    }
+
+    private static void ComposeSong(
+        ColumnDescriptor section, Song song, bool includeChords, float scale, int capacity)
+    {
+        section.Spacing(7 * scale);
         string title = string.IsNullOrWhiteSpace(song.Title) ? "Untitled" : song.Title;
         section.Item()
             .Text(string.IsNullOrWhiteSpace(song.Number) ? title : $"{song.Number}. {title}")
             .Bold()
-            .FontSize(15);
+            .FontSize(15 * scale);
         string[] details = [.. new[]
             {
                 song.Author,
@@ -105,18 +151,45 @@ internal static class SongBookPdfRenderer
             .Select(value => value!)];
         if (details.Length != 0)
         {
-            section.Item().Text(string.Join(" | ", details)).FontSize(9);
+            section.Item().Text(string.Join(" | ", details)).FontSize(9 * scale);
         }
 
         foreach (Part part in song.Parts.OrderBy(part => part.Position))
         {
-            section.Item().PreventPageBreak().Column(block => ComposePart(block, part, includeChords));
+            // In MultiColumn, page-based prevention can skip every column for a long part.
+            // Reserve a bounded heading/lyric start instead; the remainder can flow freely.
+            IContainer block = EstimatedPartHeight(part, includeChords, scale, capacity) > 180
+                ? section.Item().EnsureSpace(25 * scale)
+                : section.Item().PreventPageBreak();
+            block.Column(column => ComposePart(column, part, includeChords, scale, capacity));
         }
     }
 
-    private static void ComposePart(ColumnDescriptor block, Part part, bool includeChords)
+    // Conservative bounds retain compact groups without asking page-based prevention to keep
+    // an entire long song/part together in every column on its first page.
+    private static float EstimatedSongHeight(Song song, bool includeChords, float scale, int capacity)
     {
-        block.Spacing(includeChords ? 3 : 0);
+        int headingCapacity = Math.Max(1, capacity / 3);
+        int headingRows = 1 + Width(song.Title ?? string.Empty) / headingCapacity;
+        int metadataLength = Width(string.Join(" ", song.Author, song.Number, song.OriginalTitle, song.Key, song.Tempo));
+        return (headingRows * 24 + (1 + metadataLength / headingCapacity) * 16 + 20) * scale +
+            song.Parts.Sum(part => EstimatedPartHeight(part, includeChords, scale, capacity) + 7 * scale);
+    }
+
+    private static float EstimatedPartHeight(Part part, bool includeChords, float scale, int capacity)
+    {
+        int rows = includeChords
+            ? LayoutLines(part, capacity).Sum(line => 1 + line.ChordRows(capacity).Count())
+            : SplitLines(part.Text ?? string.Empty).Sum(line =>
+                1 + Width(line.Text.Replace("\t", new string(' ', TabWidth))) / Math.Max(1, capacity / 2));
+        int nameRows = string.IsNullOrEmpty(part.Name) ? 0 : 1 + Width(part.Name) / Math.Max(1, capacity / 2);
+        return (rows * 16 + nameRows * 16 + 6) * scale;
+    }
+
+    private static void ComposePart(
+        ColumnDescriptor block, Part part, bool includeChords, float scale, int capacity)
+    {
+        block.Spacing(includeChords ? 3 * scale : 0);
         if (!string.IsNullOrWhiteSpace(part.Name))
         {
             block.Item().Text(part.Name).SemiBold();
@@ -138,23 +211,23 @@ internal static class SongBookPdfRenderer
             return;
         }
 
-        foreach (ChordedLine line in LayoutLines(part))
+        foreach (ChordedLine line in LayoutLines(part, capacity))
         {
             // A chord row is meaningless without the lyrics below it, so never split the pair.
             block.Item().PreventPageBreak().Column(pair =>
             {
-                if (line.Chords.Count != 0)
+                foreach (string chordRow in line.ChordRows(capacity))
                 {
-                    pair.Item().Text(line.ChordText)
-                        .FontFamily(MonospaceFont, TextFont)
-                        .FontSize(ChordedFontSize)
+                    pair.Item().Text(chordRow)
+                        .FontFamily(MonospaceFont)
+                        .FontSize(ChordedFontSize * scale)
                         .FontColor(ChordColor)
                         .Bold();
                 }
 
                 pair.Item().Text(line.Lyrics.Length == 0 ? " " : line.Lyrics)
-                    .FontFamily(MonospaceFont, TextFont)
-                    .FontSize(ChordedFontSize);
+                    .FontFamily(MonospaceFont)
+                    .FontSize(ChordedFontSize * scale);
             });
         }
     }
@@ -162,8 +235,9 @@ internal static class SongBookPdfRenderer
     // Lays chorded lyrics out on a monospace grid. Each chord starts a cell holding its lyric
     // fragment; like the browser's chord view, a cell widens when the next chord would otherwise
     // overlap its symbol, so every chord stays above its character on a single chord row.
-    internal static IReadOnlyList<ChordedLine> LayoutLines(Part part)
+    internal static IReadOnlyList<ChordedLine> LayoutLines(Part part, int capacity = MaxColumns)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
         IReadOnlyList<Chord> chords = part.Chords ?? [];
         List<ChordedLine> result = [];
         HashSet<int> placedOffsets = [];
@@ -222,7 +296,7 @@ internal static class SongBookPdfRenderer
             }
 
             cells.AddRange(glyphs.GetRange(next, glyphs.Count - next));
-            result.AddRange(Wrap(cells, placed));
+            result.AddRange(Wrap(cells, placed, capacity));
         }
 
         if (chords.Any(chord => !placedOffsets.Contains(chord.Offset)))
@@ -233,7 +307,7 @@ internal static class SongBookPdfRenderer
         return result;
     }
 
-    private static IEnumerable<ChordedLine> Wrap(List<string> cells, List<PlacedChord> chords)
+    private static IEnumerable<ChordedLine> Wrap(List<string> cells, List<PlacedChord> chords, int capacity)
     {
         if (cells.Count == 0)
         {
@@ -244,11 +318,11 @@ internal static class SongBookPdfRenderer
         int start = 0;
         while (start < cells.Count)
         {
-            int end = Math.Min(start + MaxColumns, cells.Count);
+            int end = Math.Min(start + capacity, cells.Count);
             foreach (PlacedChord chord in chords)
             {
                 if (chord.Column > start && chord.Column < end &&
-                    chord.Column - start + Width(chord.Symbol) > MaxColumns)
+                    chord.Column - start + Width(chord.Symbol) > capacity)
                 {
                     end = chord.Column;
                     break;
@@ -322,6 +396,27 @@ internal static class SongBookPdfRenderer
 
     internal sealed record ChordedLine(string Lyrics, IReadOnlyList<PlacedChord> Chords)
     {
+        public IEnumerable<string> ChordRows(int capacity)
+        {
+            List<List<PlacedChord>> rows = [];
+            foreach (PlacedChord chord in Chords)
+            {
+                string[] glyphs = TextElements(chord.Symbol);
+                int available = capacity - chord.Column;
+                for (int start = 0, row = 0; start < glyphs.Length; start += available, row++)
+                {
+                    while (rows.Count <= row)
+                    {
+                        rows.Add([]);
+                    }
+
+                    rows[row].Add(new(chord.Column, string.Concat(glyphs.Skip(start).Take(available))));
+                }
+            }
+
+            return rows.Select(row => new ChordedLine(string.Empty, row).ChordText);
+        }
+
         public string ChordText
         {
             get
@@ -338,6 +433,18 @@ internal static class SongBookPdfRenderer
                 return text.ToString();
             }
         }
+    }
+
+    private static string[] TextElements(string text)
+    {
+        List<string> glyphs = [];
+        TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+        {
+            glyphs.Add(elements.GetTextElement());
+        }
+
+        return [.. glyphs];
     }
 
     private sealed record LyricLine(int Start, string Text);

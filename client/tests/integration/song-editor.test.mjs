@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { getSong } from "../../src/songsApi.js"
+import { getSong, updateSong } from "../../src/songsApi.js"
 import { createDraftKey } from "../../src/drafts.js"
 import { createAppHarness } from "../helpers/appHarness.mjs"
 import { createFakeApi } from "../helpers/fakeApi.mjs"
@@ -25,6 +25,47 @@ function findElement(root, predicate) {
 function partField(browser, partKey, field) {
     return browser.document.getElementById(`part-${field}-${partKey}`)
 }
+
+test("409 retains form and draft revision across navigation; reload requires confirmation", async () => {
+    const api = createFakeApi()
+    api.seed.account("owner@example.com")
+    const bookId = api.seed.book({ owner: "owner@example.com", name: "Concurrency" })
+    const songId = api.seed.song(bookId, { title: "Original", parts: [{ name: "Verse", text: "old" }] })
+    api.signIn("owner@example.com")
+    const { app, browser } = createAppHarness(api, { initialUrl: `https://localhost/#/books/${bookId}/songs/${songId}/edit` })
+    try {
+        await app.ready
+        await browser.document.getElementById("song-title").input("My kept draft")
+        await updateSong(bookId, songId, { title: "Someone else's edit", parts: [], expectedRevision: 0 })
+        await browser.document.getElementById("song-editor-form").submit()
+        assert.equal(browser.document.getElementById("song-title").value, "My kept draft")
+        assert.match(browser.text("editor-status"), /changed.*draft was kept/i)
+        assert.equal(app.context.drafts.get(createDraftKey(bookId, songId)).expectedRevision, 0)
+        assert.equal(browser.document.getElementById("compare-song-history").getAttribute("href"),
+            `#/books/${bookId}/songs/${songId}/history`)
+        await app.navigate(`#/books/${bookId}/songs/${songId}/history`)
+        await app.navigate(`#/books/${bookId}/songs/${songId}/edit`)
+        assert.equal(browser.document.getElementById("song-title").value, "My kept draft")
+        await browser.document.getElementById("song-editor-form").submit()
+        assert.equal(api.requests.filter(request => request.method === "PUT").at(-1).body.expectedRevision, 0)
+        const cancelReload = browser.document.getElementById("reload-conflicted-song").click()
+        await browser.settle()
+        await browser.document.getElementById("dialog-cancel").click()
+        await cancelReload
+        assert.equal(browser.document.getElementById("song-title").value, "My kept draft")
+        const reload = browser.document.getElementById("reload-conflicted-song").click()
+        await browser.settle()
+        await browser.document.getElementById("dialog-confirm").click()
+        await reload
+        assert.equal(browser.document.getElementById("song-title").value, "Someone else's edit")
+        assert.equal(app.context.drafts.hasAny(), false)
+        await browser.document.getElementById("song-title").input("Reconciled")
+        await browser.document.getElementById("song-editor-form").submit()
+        assert.equal(browser.screen(), "song")
+        assert.equal((await getSong(bookId, songId)).title, "Reconciled")
+        assert.equal(api.requests.filter(request => request.method === "PUT").at(-1).body.expectedRevision, 2)
+    } finally { browser.restore() }
+})
 
 test("create screen saves inline chords and opens the created song", async () => {
     const api = createFakeApi()

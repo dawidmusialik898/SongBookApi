@@ -1,5 +1,6 @@
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Repositories;
+using SongBookApi.Domain.Services;
 using SongBookApi.Service.Services;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -140,12 +141,165 @@ public sealed class SongBookPdfRendererTests
         }
     }
 
-    private static byte[] Render(Part part, bool includeChords)
+    [Theory]
+    [InlineData("lato", 8, "portrait", 1)]
+    [InlineData("lato", 18, "portrait", 2)]
+    [InlineData("dejavu-sans-mono", 18, "landscape", 3)]
+    [InlineData("dejavu-sans-mono", 8, "landscape", 1)]
+    public void OptionsChangeActualPaperFontAndTypography(
+        string font, int size, string orientation, int columns)
+    {
+        PdfOptions options = Options(font, size, orientation, columns);
+        using var document = PdfDocument.Open(Render(new Part { Text = "Bodyprobe" }, false, options));
+        Page page = document.GetPage(1);
+        Assert.Equal(orientation == "portrait" ? 595.28 : 841.89, page.Width, 0.5);
+        Assert.Equal(orientation == "portrait" ? 841.89 : 595.28, page.Height, 0.5);
+        Letter body = page.GetWords().Single(word => word.Text == "Bodyprobe").Letters[0];
+        Assert.Contains(font == "lato" ? "Lato" : "DejaVuSansMono", body.FontName);
+        Assert.Equal(size, body.PointSize, 0.01);
+        Assert.All(page.Letters, letter =>
+            Assert.True(letter.FontName?.Contains("Lato") == true || letter.FontName?.Contains("DejaVuSansMono") == true));
+        AssertBounds(page, columns);
+    }
+
+    [Theory]
+    [InlineData("portrait", 1, true)]
+    [InlineData("portrait", 2, false)]
+    [InlineData("landscape", 1, false)]
+    [InlineData("landscape", 2, false)]
+    [InlineData("landscape", 3, true)]
+    public void LongPartsAndUnequalSongsFlowDownColumnsThenAcrossPagesWithoutLosingOrder(
+        string orientation, int columns, bool chords)
+    {
+        PdfOptions options = Options("lato", 18, orientation, columns);
+        int marker = 0;
+        Song[] songs = [.. Enumerable.Range(0, 9).Select(index => new Song
+        {
+            Title = $"Song{index:D2}",
+            Parts = [new Part
+            {
+                Name = $"Part{index:D2}",
+                Text = string.Join("\n", Enumerable.Range(0, index % 3 == 0 ? 55 : 3)
+                    .Select(_ => $"Marker{marker++:D3}"))
+            }]
+        })];
+        using var document = PdfDocument.Open(SongBookPdfRenderer.Render(
+            new SongBookPdfSnapshot("Full width book header", 0, songs), chords, DateTimeOffset.UnixEpoch, options));
+        Assert.True(document.NumberOfPages > 1);
+        var markers = document.GetPages().SelectMany(page => page.GetWords()
+            .Where(word => word.Text.StartsWith("Marker", StringComparison.Ordinal))
+            .Select(word => new { Page = page.Number, Column = ColumnAt(page, columns, word.Letters[0]), Word = word }))
+            .ToArray();
+        Assert.Equal(marker, markers.Length);
+        Assert.Equal(Enumerable.Range(0, marker).Select(index => $"Marker{index:D3}"),
+            markers.OrderBy(value => value.Page).ThenBy(value => value.Column)
+                .ThenByDescending(value => value.Word.Letters[0].StartBaseLine.Y)
+                .Select(value => value.Word.Text));
+        Assert.Equal(Enumerable.Range(0, columns), markers.Where(value => value.Page == 1)
+            .Select(value => value.Column).Distinct().Order());
+        Assert.All(document.GetPages(), page =>
+        {
+            AssertBounds(page, columns);
+            Word header = page.GetWords().Single(word => word.Text == "Full");
+            Word footer = page.GetWords().Single(word => word.Text == "Page");
+            Assert.Equal(SongBookPdfRenderer.Margin, header.Letters[0].StartBaseLine.X, 0.1);
+            Assert.True(footer.Letters[0].StartBaseLine.X > page.Width - 120);
+        });
+        string text = string.Join("\n", document.GetPages().Select(page => ContentOrderTextExtractor.GetText(page)));
+        foreach (Song song in songs)
+        {
+            Assert.Contains(song.Title!, text);
+            Assert.Contains(song.Parts[0].Name!, text);
+        }
+    }
+
+    [Fact]
+    public void MaximumSizeThreeColumnChordsWrapOversizedSymbolsIntoAlignedRowsWithinBounds()
+    {
+        PdfOptions options = Options("lato", 18, "landscape", 3);
+        string firstLine = "Anchor " + new string('q', 900);
+        Part part = new()
+        {
+            Text = firstLine + "\nabc\tZażółć gęślą jaźń 🎸",
+            Chords =
+            [
+                new Chord { Offset = 0, Symbol = new string('Z', 64) },
+                new Chord { Offset = firstLine.Length + 1, Symbol = "Am7" },
+                new Chord { Offset = firstLine.Length + 2, Symbol = "B♭" }
+            ]
+        };
+        int capacity = SongBookPdfRenderer.WrapCapacity(options);
+        var lines = SongBookPdfRenderer.LayoutLines(part, capacity);
+        Assert.All(lines, line => Assert.All(line.ChordRows(capacity), row =>
+            Assert.InRange(new System.Globalization.StringInfo(row).LengthInTextElements, 1, capacity)));
+        Assert.Equal(64, string.Concat(lines.SelectMany(line => line.ChordRows(capacity))).Count(c => c == 'Z'));
+        using var document = PdfDocument.Open(Render(part, true, options));
+        Page first = document.GetPage(1);
+        Letter anchor = first.GetWords().Single(word => word.Text == "Anchor").Letters[0];
+        Letter[] symbol = [.. first.Letters.Where(letter => letter.Value == "Z" && letter.FontName?.Contains("Bold") == true)];
+        Assert.Equal(64, symbol.Length);
+        var rows = symbol.GroupBy(letter => letter.StartBaseLine.Y).ToArray();
+        Assert.True(rows.Length >= 3);
+        foreach (var row in rows)
+        {
+            Assert.Equal(anchor.StartBaseLine.X, row.First().StartBaseLine.X, 0.01);
+            Assert.True(row.Key > anchor.StartBaseLine.Y);
+        }
+
+        Assert.Equal(16.2, anchor.PointSize, 0.01);
+        Assert.Contains("DejaVuSansMono", anchor.FontName);
+        Assert.Equal(900, document.GetPages().SelectMany(page => page.Letters).Count(letter => letter.Value == "q"));
+        string text = string.Join("\n", document.GetPages().Select(page => ContentOrderTextExtractor.GetText(page)));
+        Assert.Contains("Zażółć", text);
+        Assert.Contains("gęślą", text);
+        Assert.Contains("Am7", text);
+        Assert.Contains("B♭", text);
+        Assert.All(document.GetPages(), page => AssertBounds(page, 3));
+        Word[] words = [.. document.GetPages().SelectMany(page => page.GetWords())];
+        Word am = words.Single(word => word.Text == "Am7");
+        Word flat = words.Single(word => word.Text == "B♭");
+        Word a = words.Single(word => word.Text == "a");
+        Word bc = words.Single(word => word.Text == "bc");
+        Assert.Equal(a.Letters[0].StartBaseLine.X, am.Letters[0].StartBaseLine.X, 0.01);
+        Assert.Equal(bc.Letters[0].StartBaseLine.X, flat.Letters[0].StartBaseLine.X, 0.01);
+        Assert.Equal(am.Letters[0].StartBaseLine.Y, flat.Letters[0].StartBaseLine.Y, 0.01);
+    }
+
+    private static PdfOptions Options(string font, int size, string orientation, int columns)
+        => PdfOptions.Validate(font, size, orientation, columns, out _) ?? throw new Exception("Invalid test options.");
+
+    private static int ColumnAt(Page page, int columns, Letter letter)
+    {
+        double width = (page.Width - 2 * SongBookPdfRenderer.Margin -
+            (columns - 1) * SongBookPdfRenderer.Gutter) / columns;
+        return Math.Clamp((int)((letter.StartBaseLine.X - SongBookPdfRenderer.Margin + 0.1) /
+            (width + SongBookPdfRenderer.Gutter)), 0, columns - 1);
+    }
+
+    private static void AssertBounds(Page page, int columns)
+    {
+        double width = (page.Width - 2 * SongBookPdfRenderer.Margin -
+            (columns - 1) * SongBookPdfRenderer.Gutter) / columns;
+        foreach (Letter letter in page.Letters.Where(letter => !string.IsNullOrWhiteSpace(letter.Value)))
+        {
+            Assert.InRange(letter.BoundingBox.Left, SongBookPdfRenderer.Margin - 1, page.Width - SongBookPdfRenderer.Margin + 1);
+            Assert.InRange(letter.BoundingBox.Right, SongBookPdfRenderer.Margin - 1, page.Width - SongBookPdfRenderer.Margin + 1);
+            Assert.InRange(letter.BoundingBox.Bottom, SongBookPdfRenderer.Margin - 1, page.Height - SongBookPdfRenderer.Margin + 1);
+            Assert.InRange(letter.BoundingBox.Top, SongBookPdfRenderer.Margin - 1, page.Height - SongBookPdfRenderer.Margin + 1);
+            if (letter.StartBaseLine.Y > 75 && letter.StartBaseLine.Y < page.Height - 85)
+            {
+                double left = SongBookPdfRenderer.Margin + ColumnAt(page, columns, letter) * (width + SongBookPdfRenderer.Gutter);
+                Assert.InRange(letter.BoundingBox.Right, left, left + width + 1);
+            }
+        }
+    }
+
+    private static byte[] Render(Part part, bool includeChords, PdfOptions? options = null)
     {
         byte[] pdf = SongBookPdfRenderer.Render(
             new SongBookPdfSnapshot("Book", 0, [new Song { Title = "Probe", Parts = [part] }]),
             includeChords,
-            DateTimeOffset.UnixEpoch);
+            DateTimeOffset.UnixEpoch, options);
         Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
         return pdf;
     }

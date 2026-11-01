@@ -99,11 +99,16 @@ export function getSongBookPdfs(
 
 export function createSongBookPdf(
     songBookId,
-    { includeChords, songIds } = {}
+    { includeChords, songIds, fontFamily, fontSize, orientation, columns } = {}
 ) {
     const url = getSongBookPdfsUrl(songBookId)
     if (
         typeof includeChords !== "boolean" ||
+        (fontFamily !== undefined && !["lato", "dejavu-sans-mono"].includes(fontFamily)) ||
+        (fontSize !== undefined && (!Number.isInteger(fontSize) || fontSize < 8 || fontSize > 18)) ||
+        (orientation !== undefined && !["portrait", "landscape"].includes(orientation)) ||
+        (columns !== undefined && (!Number.isInteger(columns) || columns < 1 ||
+            columns > (orientation === "landscape" ? 3 : 2))) ||
         (
             songIds !== undefined &&
             (
@@ -121,9 +126,14 @@ export function createSongBookPdf(
 
     return request(url, {
         method: "POST",
-        json: songIds === undefined
-            ? { includeChords }
-            : { includeChords, songIds }
+        json: {
+            includeChords,
+            ...(songIds === undefined ? {} : { songIds }),
+            ...(fontFamily === undefined ? {} : { fontFamily }),
+            ...(fontSize === undefined ? {} : { fontSize }),
+            ...(orientation === undefined ? {} : { orientation }),
+            ...(columns === undefined ? {} : { columns })
+        }
     })
 }
 

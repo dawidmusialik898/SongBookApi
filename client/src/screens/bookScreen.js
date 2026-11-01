@@ -20,6 +20,8 @@ import {
 } from "../ui/format.js"
 
 export async function renderBookScreen(ctx) {
+    const readBook = ctx.readApi?.getSongBook ?? getSongBook
+    const readSongs = ctx.readApi?.getSongs ?? getSongs
     const bookId = ctx.params.bookId
     ctx.setBreadcrumb([])
     ctx.setTitle(["Song book"])
@@ -109,7 +111,7 @@ export async function renderBookScreen(ctx) {
         moreButton,
         fetchPage: async (page, signal) => {
             try {
-                return await getSongs(bookId, page, {
+                return await readSongs(bookId, page, {
                     search: activeSearch,
                     signal
                 })
@@ -144,7 +146,7 @@ export async function renderBookScreen(ctx) {
         signal: ctx.signal
     })
 
-    const cached = ctx.cache.bookList
+    const cached = ctx.publicRead ? null : ctx.cache.bookList
     const savedSnapshot = ctx.traversal &&
         cached?.bookId === bookId &&
         cached.q === activeSearch &&
@@ -187,7 +189,7 @@ export async function renderBookScreen(ctx) {
     function setBookDetails(book) {
         loadedBook = book
         bookName = displayValue(book.name, "Untitled song book")
-        accessLevel = normalizeAccessLevel(book.accessLevel)
+        accessLevel = ctx.publicRead ? "reader" : normalizeAccessLevel(book.accessLevel)
         heading.textContent = bookName
         meta.textContent = formatCount(book.songCount, "song") +
             (accessLevel === "reader"
@@ -204,6 +206,12 @@ export async function renderBookScreen(ctx) {
 
     function renderActions() {
         actions.replaceChildren()
+        if (!ctx.publicRead) actions.appendChild(h("a", {
+            id: "book-history-link",
+            className: "button button--neutral",
+            attrs: { href: ctx.href("book-history", { bookId }) },
+            text: "History"
+        }))
         if (accessLevel === "admin" || accessLevel === "editor") {
             actions.appendChild(h("a", {
                 id: "add-song-link",
@@ -377,7 +385,7 @@ export async function renderBookScreen(ctx) {
 
     function cleanup() {
         clearDebounce()
-        if (loadedBook !== null && !snapshotInvalidated) {
+        if (!ctx.publicRead && loadedBook !== null && !snapshotInvalidated) {
             const snapshot = pagedList.snapshot()
             ctx.cache.bookList = snapshot.page === 0
                 ? null
@@ -391,7 +399,7 @@ export async function renderBookScreen(ctx) {
     }
 
     try {
-        const book = await getSongBook(bookId, { signal: ctx.signal })
+        const book = await readBook(bookId, { signal: ctx.signal })
         if (!ctx.isCurrent()) {
             return {}
         }

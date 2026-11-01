@@ -256,7 +256,7 @@ test("song deletion can be cancelled, retried after failure, and completed", asy
         assert.equal(browser.text("dialog-title"), "Delete song?")
         assert.equal(
             browser.text("dialog-message"),
-            'Delete "Amazing Grace"? This cannot be undone.'
+            'Delete "Amazing Grace"? Editors can recover it from book history until the book is deleted.'
         )
         await browser.document.getElementById("dialog-cancel").click()
         await cancelDelete

@@ -13,6 +13,9 @@ import {
 } from "../ui/format.js"
 
 export async function renderSongScreen(ctx) {
+    const readBook = ctx.readApi?.getSongBook ?? getSongBook
+    const readSong = ctx.readApi?.getSong ?? getSong
+    const readAdjacent = ctx.readApi?.getAdjacentSongs ?? getAdjacentSongs
     const { bookId, songId } = ctx.params
     ctx.setBreadcrumb([])
     ctx.setTitle(["Song"])
@@ -47,11 +50,11 @@ export async function renderSongScreen(ctx) {
         pagerContainer
     )
 
-    const bookRequest = getSongBook(bookId, { signal: ctx.signal })
+    const bookRequest = readBook(bookId, { signal: ctx.signal })
         .then(value => ({ value }), error => ({ error }))
-    const songRequest = getSong(bookId, songId, { signal: ctx.signal })
+    const songRequest = readSong(bookId, songId, { signal: ctx.signal })
         .then(value => ({ value }), error => ({ error }))
-    const adjacentRequest = getAdjacentSongs(bookId, songId, {
+    const adjacentRequest = readAdjacent(bookId, songId, {
         signal: ctx.signal
     }).then(value => ({ value }), error => ({ error }))
 
@@ -122,7 +125,7 @@ export async function renderSongScreen(ctx) {
     const bookName = displayValue(book.name, "Untitled song book")
     const songName = displayValue(song.title, "Untitled song")
     const accessLevel = normalizeAccessLevel(book.accessLevel)
-    const canEdit = accessLevel === "admin" || accessLevel === "editor"
+    const canEdit = !ctx.publicRead && (accessLevel === "admin" || accessLevel === "editor")
     heading.textContent = songName
     ctx.setTitle([songName, bookName])
     ctx.setBreadcrumb([
@@ -155,6 +158,18 @@ export async function renderSongScreen(ctx) {
     const hasChords = song.parts.some(part =>
         Array.isArray(part.chords) && part.chords.length > 0
     )
+    if (!ctx.publicRead) actions.appendChild(h("a", {
+        id: "copy-song-link",
+        className: "button button--neutral",
+        attrs: { href: ctx.href("song-copy", { bookId, songId }) },
+        text: "Copy to song book"
+    }))
+    if (!ctx.publicRead) actions.appendChild(h("a", {
+        id: "song-history-link",
+        className: "button button--neutral",
+        attrs: { href: ctx.href("song-history", { bookId, songId }) },
+        text: "History"
+    }))
     let chordsToggle = null
     if (hasChords) {
         chordsToggle = h("button", {
@@ -225,7 +240,7 @@ export async function renderSongScreen(ctx) {
     async function confirmDeleteSong() {
         const confirmed = await ctx.dialogs.confirmDialog({
             title: "Delete song?",
-            message: `Delete "${songName}"? This cannot be undone.`,
+            message: `Delete "${songName}"? Editors can recover it from book history until the book is deleted.`,
             confirmLabel: "Delete song",
             destructive: true
         })
@@ -234,8 +249,13 @@ export async function renderSongScreen(ctx) {
         }
 
         try {
-            await deleteSong(bookId, songId)
+            await deleteSong(bookId, songId, song.revision ?? 0)
         } catch (error) {
+            if (!ctx.isCurrent() || error?.name === "AbortError") return
+            if (error instanceof ApiError && error.status === 409) {
+                ctx.status.show("error", "This song changed. Reload or compare its history before deleting.")
+                return
+            }
             if (error instanceof ApiError && error.status === 404) {
                 ctx.cache.bookList = null
                 await ctx.goBackOr(ctx.href("book", { bookId }), {

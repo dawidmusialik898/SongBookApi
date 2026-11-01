@@ -84,6 +84,19 @@ export function getLoadSongBooksErrorMessage(error) {
     return "Could not load song books. Try again."
 }
 
+export function getCopySongErrorMessage(error) {
+    if (error instanceof ApiError && error.status === 403) {
+        return "You can no longer edit the destination song book. Choose another destination."
+    }
+    if (error instanceof ApiError && error.status === 404) {
+        return "The source song or destination book is no longer accessible. Your selection was kept."
+    }
+    if (error instanceof ApiError && error.status === 400) {
+        return getAuthValidationMessage(error, "The song could not be copied. Your selection was kept.")
+    }
+    return "Could not copy the song. Your selection was kept. Try again."
+}
+
 export function getSaveSongBookErrorMessage(error, mode) {
     const action = mode === "create" ? "create" : "rename"
     const pastAction = mode === "create" ? "created" : "renamed"

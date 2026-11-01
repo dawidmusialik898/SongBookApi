@@ -21,11 +21,16 @@ test("songsApi exports exactly the supported runtime API", async () => {
     const api = await import("../../src/songsApi.js")
 
     assert.deepEqual(Object.keys(api).sort(), [
+        "copySong",
         "createSong",
         "deleteSong",
         "getAdjacentSongs",
+        "getBookHistory",
         "getSong",
+        "getSongHistory",
+        "getSongSnapshot",
         "getSongs",
+        "restoreSong",
         "updateSong"
     ])
 })

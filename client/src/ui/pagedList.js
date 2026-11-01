@@ -236,6 +236,10 @@ export function createPagedList({
     }
 
     return {
+        destroy() {
+            generation += 1
+            abortCurrent()
+        },
         reload,
         loadMore,
         items: () => [...currentItems],

@@ -21,8 +21,10 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
     public async Task<SongBookPdfInfo> GenerateAsync(
         Guid bookId,
         bool includeChords,
-        IReadOnlyList<Guid>? songIds)
+        IReadOnlyList<Guid>? songIds,
+        PdfOptions? options = null)
     {
+        options ??= PdfOptions.Default;
         if (songIds is { Count: 0 } ||
             songIds?.Any(id => id == Guid.Empty) == true ||
             songIds?.Distinct().Count() != songIds?.Count)
@@ -50,8 +52,12 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
             IncludeChords = includeChords,
             IsWholeBook = songIds is null,
             SongCount = snapshot.Songs.Count,
+            FontFamily = options.FontFamily,
+            FontSize = options.FontSize,
+            Orientation = options.Orientation,
+            Columns = options.Columns,
             SelectedSongsJson = JsonSerializer.Serialize(selectedSongs),
-            Content = SongBookPdfRenderer.Render(snapshot, includeChords, generatedAtUtc)
+            Content = SongBookPdfRenderer.Render(snapshot, includeChords, generatedAtUtc, options)
         };
         long currentRevision = await repository.AddAsync(pdf);
         return new SongBookPdfInfo(
@@ -61,7 +67,8 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
             pdf.SongCount,
             selectedSongs,
             pdf.GeneratedAtUtc,
-            pdf.ContentRevision != currentRevision);
+            pdf.ContentRevision != currentRevision,
+            pdf.FontFamily, pdf.FontSize, pdf.Orientation, pdf.Columns);
     }
 
     public async Task<SongBookPdfDownload?> DownloadAsync(Guid bookId, Guid pdfId)
@@ -79,5 +86,6 @@ public sealed class SongBookPdfService(ISongBookPdfRepository repository) : ISon
             JsonSerializer.Deserialize<SelectedPdfSong[]>(pdf.SelectedSongsJson)
                 ?? throw new JsonException("Stored PDF song selection is invalid."),
             pdf.GeneratedAtUtc,
-            pdf.ContentRevision != pdf.CurrentRevision);
+            pdf.ContentRevision != pdf.CurrentRevision,
+            pdf.FontFamily, pdf.FontSize, pdf.Orientation, pdf.Columns);
 }

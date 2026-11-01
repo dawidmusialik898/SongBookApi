@@ -1,4 +1,3 @@
-using System.Net;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +6,7 @@ using SongBookApi.Infrastructure.Identity;
 using SongBookApi.Service.Authentication;
 using SongBookApi.Service.Endpoints;
 using SongBookApi.Service.Extensions;
+using System.Net;
 
 bool migrateOnly = args.Length == 1 && args[0] == "--migrate";
 if (!migrateOnly && args.Contains("--migrate", StringComparer.Ordinal))
@@ -134,10 +134,22 @@ _ = app.UseStaticFiles(new StaticFileOptions
 _ = app.MapGet("/", (HttpContext context) =>
 {
     context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
     return Results.File(indexPath, "text/html; charset=utf-8");
 });
 
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/shared") ||
+        context.Request.Path.Value?.EndsWith("/share-link", StringComparison.Ordinal) == true)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+
+    await next();
+});
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -170,7 +182,9 @@ app.MapAuthEndpoints();
 app.MapModerationEndpoints();
 app.MapSongBookEndpoints();
 app.MapSongEndpoints();
+app.MapHistoryEndpoints();
 app.MapSongBookPdfEndpoints();
+app.MapShareLinkEndpoints();
 
 app.Run();
 

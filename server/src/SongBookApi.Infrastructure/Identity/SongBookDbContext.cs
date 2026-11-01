@@ -15,10 +15,52 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
     public DbSet<Song> Songs => Set<Song>();
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<Chord> Chords => Set<Chord>();
+    public DbSet<BookActivity> BookActivities => Set<BookActivity>();
+    public DbSet<SongRevision> SongRevisions => Set<SongRevision>();
+    public DbSet<SongBookShareLink> SongBookShareLinks => Set<SongBookShareLink>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        builder.Entity<SongBookShareLink>(entity =>
+        {
+            entity.HasKey(link => link.SongBookId);
+            entity.Property(link => link.TokenHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(link => link.TokenHash).IsUnique();
+            entity.Property(link => link.CreatedAtUtc).HasConversion(
+                value => value.UtcTicks, ticks => new DateTimeOffset(ticks, TimeSpan.Zero));
+            entity.HasOne<SongBook>().WithMany().HasForeignKey(link => link.SongBookId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(link => link.ActorId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<BookActivity>(entity =>
+        {
+            entity.Property(entry => entry.Operation).HasMaxLength(64).IsRequired();
+            entity.Property(entry => entry.OccurredAtUtc).HasConversion(
+                value => value.UtcTicks, ticks => new DateTimeOffset(ticks, TimeSpan.Zero));
+            entity.HasIndex(entry => new { entry.SongBookId, entry.OccurredAtUtc, entry.Id });
+            entity.HasOne<SongBook>().WithMany().HasForeignKey(entry => entry.SongBookId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(entry => entry.ActorId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(entry => entry.SubjectUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        builder.Entity<SongRevision>(entity =>
+        {
+            entity.Property(entry => entry.Operation).HasMaxLength(64).IsRequired();
+            entity.Property(entry => entry.SnapshotJson).IsRequired();
+            entity.Property(entry => entry.OccurredAtUtc).HasConversion(
+                value => value.UtcTicks, ticks => new DateTimeOffset(ticks, TimeSpan.Zero));
+            entity.HasIndex(entry => new { entry.SongBookId, entry.SongId, entry.Revision }).IsUnique();
+            entity.HasOne<SongBook>().WithMany().HasForeignKey(entry => entry.SongBookId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(entry => entry.ActorId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
 
         builder.Entity<IdentityRole>().HasData(
             new IdentityRole
@@ -72,6 +114,10 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
 
         builder.Entity<SongBookPdf>(entity =>
         {
+            entity.Property(pdf => pdf.FontFamily).HasDefaultValue("lato").IsRequired();
+            entity.Property(pdf => pdf.FontSize).HasDefaultValue(10);
+            entity.Property(pdf => pdf.Orientation).HasDefaultValue("portrait").IsRequired();
+            entity.Property(pdf => pdf.Columns).HasDefaultValue(1);
             entity.Property(pdf => pdf.SelectedSongsJson).IsRequired();
             entity.Property(pdf => pdf.Content).IsRequired();
             entity.Property(pdf => pdf.GeneratedAtUtc).HasConversion(
@@ -87,6 +133,7 @@ public sealed class SongBookDbContext(DbContextOptions<SongBookDbContext> option
         builder.Entity<Song>(entity =>
         {
             entity.HasKey(song => song.Id);
+            entity.Property(song => song.Revision).HasDefaultValue(0L).IsConcurrencyToken();
             entity.HasIndex(song => new { song.SongBookId, song.Title, song.Id });
             entity.HasMany(song => song.Parts)
                 .WithOne()

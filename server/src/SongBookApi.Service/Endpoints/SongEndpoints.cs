@@ -1,13 +1,13 @@
-using System.Security.Claims;
 using SongBookApi.Domain;
-using DomainAdjacentSongs = SongBookApi.Domain.Dto.AdjacentSongs;
-using DomainSongSummary = SongBookApi.Domain.Dto.SongSummary;
-using DomainSong = SongBookApi.Domain.Dto.Song;
-using DomainPart = SongBookApi.Domain.Dto.Part;
-using DomainChord = SongBookApi.Domain.Dto.Chord;
 using SongBookApi.Domain.Services;
 using SongBookApi.Service.Authentication;
 using SongBookApi.Service.Contracts;
+using System.Security.Claims;
+using DomainAdjacentSongs = SongBookApi.Domain.Dto.AdjacentSongs;
+using DomainChord = SongBookApi.Domain.Dto.Chord;
+using DomainPart = SongBookApi.Domain.Dto.Part;
+using DomainSong = SongBookApi.Domain.Dto.Song;
+using DomainSongSummary = SongBookApi.Domain.Dto.SongSummary;
 
 namespace SongBookApi.Service.Endpoints;
 
@@ -16,12 +16,14 @@ public static class SongEndpoints
     public static void MapSongEndpoints(this WebApplication app)
     {
         RouteGroupBuilder songs = app.MapGroup("/songbooks/{bookId:guid}/songs")
-            .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy);
+            .RequireAuthorization(AuthConstants.AuthenticatedUserPolicy)
+            .AddEndpointFilter<MutationAttributionFilter>();
 
         songs.MapGet("", GetSongs);
         songs.MapGet("/{songId:guid}/adjacent", GetAdjacentSongs);
         songs.MapGet("/{songId:guid}", GetSong);
         songs.MapPost("", CreateSong).AddEndpointFilter<AntiforgeryValidationFilter>();
+        songs.MapPost("/copy", CopySong).AddEndpointFilter<AntiforgeryValidationFilter>();
         songs.MapPut("/{songId:guid}", UpdateSong).AddEndpointFilter<AntiforgeryValidationFilter>();
         songs.MapDelete("/{songId:guid}", DeleteSong).AddEndpointFilter<AntiforgeryValidationFilter>();
     }
@@ -153,13 +155,85 @@ public static class SongEndpoints
             ToResponse(created));
     }
 
+    private static async Task<IResult> CopySong(
+        Guid bookId,
+        CopySongRequest request,
+        ClaimsPrincipal principal,
+        ISongBookAccessService accessService,
+        ISongService songService,
+        IMutationContext mutation)
+    {
+        if (bookId == Guid.Empty || request.SourceBookId == Guid.Empty || request.SourceSongId == Guid.Empty)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["sourceSongId"] = ["Source and destination IDs must be nonempty."]
+            });
+        }
+
+        if (bookId == request.SourceBookId)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["sourceBookId"] = ["Choose a different destination song book."]
+            });
+        }
+
+        string userId = EndpointHelpers.GetUserId(principal);
+        IResult? denial = await RequireAccessAsync(request.SourceBookId, userId, accessService, EffectiveSongBookAccess.Reader)
+            ?? await RequireAccessAsync(bookId, userId, accessService, EffectiveSongBookAccess.Editor);
+        if (denial is not null)
+        {
+            return denial;
+        }
+
+        DomainSong? source = await songService.GetSongByIdAsync(request.SourceBookId, request.SourceSongId);
+        if (source is null)
+        {
+            return Results.NotFound();
+        }
+
+        DomainSong copy = new()
+        {
+            Title = source.Title,
+            Author = source.Author,
+            OriginalTitle = source.OriginalTitle,
+            Number = source.Number,
+            Key = source.Key,
+            Tempo = source.Tempo,
+            Parts = source.Parts.OrderBy(part => part.Position).Select(part => new DomainPart
+            {
+                Name = part.Name,
+                Text = part.Text,
+                Position = part.Position,
+                Chords = part.Chords?.OrderBy(chord => chord.Offset).Select(chord => new DomainChord
+                {
+                    Offset = chord.Offset,
+                    Symbol = chord.Symbol
+                }).ToList() ?? []
+            }).ToList()
+        };
+        MutationContext previous = mutation.Current;
+        try
+        {
+            mutation.Current = previous with { Operation = "song.copied", ExpectedRevision = null, RestoredFromRevision = null };
+            DomainSong created = await songService.CreateSongAsync(bookId, copy);
+            return Results.Created($"/songbooks/{bookId}/songs/{created.Id}", ToResponse(created));
+        }
+        finally
+        {
+            mutation.Current = previous;
+        }
+    }
+
     private static async Task<IResult> UpdateSong(
         Guid bookId,
         Guid songId,
         SongRequest request,
         ClaimsPrincipal principal,
         ISongBookAccessService accessService,
-        ISongService songService)
+        ISongService songService,
+        IMutationContext mutation)
     {
         IResult? denial = await RequireAccessAsync(
             bookId,
@@ -179,9 +253,19 @@ public static class SongEndpoints
 
         try
         {
+            if (request.ExpectedRevision < 0) return Results.BadRequest();
+            mutation.Current = mutation.Current with { ExpectedRevision = request.ExpectedRevision };
             return await songService.UpdateSongAsync(bookId, songId, ToDomain(request, acceptPartIds: true))
                 ? Results.NoContent()
                 : Results.NotFound();
+        }
+        catch (SongRevisionConflictException)
+        {
+            return Results.Conflict();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return Results.Conflict();
         }
         catch (ArgumentException exception)
         {
@@ -195,7 +279,9 @@ public static class SongEndpoints
         Guid songId,
         ClaimsPrincipal principal,
         ISongBookAccessService accessService,
-        ISongService songService)
+        ISongService songService,
+        IMutationContext mutation,
+        long? expectedRevision = null)
     {
         IResult? denial = await RequireAccessAsync(
             bookId,
@@ -207,9 +293,15 @@ public static class SongEndpoints
             return denial;
         }
 
-        return await songService.DeleteSongAsync(bookId, songId)
-            ? Results.NoContent()
-            : Results.NotFound();
+        if (expectedRevision < 0) return Results.BadRequest();
+        mutation.Current = mutation.Current with { ExpectedRevision = expectedRevision };
+        try
+        {
+            return await songService.DeleteSongAsync(bookId, songId)
+                ? Results.NoContent() : Results.NotFound();
+        }
+        catch (SongRevisionConflictException) { return Results.Conflict(); }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) { return Results.Conflict(); }
     }
 
     private static async Task<IResult?> RequireAccessAsync(
@@ -314,7 +406,7 @@ public static class SongEndpoints
             }).ToList() ?? []
         };
 
-    private static SongResponse ToResponse(DomainSong song)
+    internal static SongResponse ToResponse(DomainSong song)
         => new(
             song.Id,
             song.Title,
@@ -333,8 +425,9 @@ public static class SongEndpoints
                         .OrderBy(chord => chord.Offset)
                         .Select(chord => new ChordResponse(chord.Offset, chord.Symbol))
                         .ToList() ?? []))
-                .ToList());
+                .ToList(),
+            song.Revision);
 
-    private static SongSummaryResponse ToSummaryResponse(DomainSongSummary song)
+    internal static SongSummaryResponse ToSummaryResponse(DomainSongSummary song)
         => new(song.Id, song.Title, song.Author, song.Number);
 }

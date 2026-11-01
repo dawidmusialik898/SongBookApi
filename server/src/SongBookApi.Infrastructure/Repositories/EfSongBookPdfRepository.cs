@@ -4,11 +4,13 @@ using SongBookApi.Domain;
 using SongBookApi.Domain.Dto;
 using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Repositories;
+using SongBookApi.Domain.Services;
 using SongBookApi.Infrastructure.Identity;
 
 namespace SongBookApi.Infrastructure.Repositories;
 
-public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISongBookPdfRepository
+public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext, IActivityWriter writer)
+    : ISongBookPdfRepository
 {
     public async Task<SongBookPdfSnapshot?> GetSnapshotAsync(
         Guid bookId,
@@ -62,7 +64,11 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISong
                 pdf.IncludeChords,
                 pdf.IsWholeBook,
                 pdf.SongCount,
-                pdf.SelectedSongsJson))
+                pdf.SelectedSongsJson,
+                pdf.FontFamily,
+                pdf.FontSize,
+                pdf.Orientation,
+                pdf.Columns))
             .ToListAsync(), page);
 
     public Task<SongBookPdf?> GetAsync(Guid bookId, Guid pdfId)
@@ -72,11 +78,15 @@ public sealed class EfSongBookPdfRepository(SongBookDbContext dbContext) : ISong
 
     public async Task<long> AddAsync(SongBookPdf pdf)
     {
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         dbContext.SongBookPdfs.Add(pdf);
+        writer.StageActivity(pdf.SongBookId, "pdf.generated");
         await dbContext.SaveChangesAsync();
-        return await dbContext.SongBooks
+        long revision = await dbContext.SongBooks
             .Where(book => book.Id == pdf.SongBookId)
             .Select(book => book.ContentRevision)
             .SingleAsync();
+        await transaction.CommitAsync();
+        return revision;
     }
 }

@@ -57,6 +57,16 @@ export function createSong(songBookId, songPayload) {
     })
 }
 
+export function copySong(destinationBookId, sourceBookId, sourceSongId, { signal } = {}) {
+    requireId(sourceBookId, "Source song book id")
+    requireId(sourceSongId, "Source song id")
+    return request(`${getSongsUrl(destinationBookId)}/copy`, {
+        method: "POST",
+        json: { sourceBookId, sourceSongId },
+        signal
+    })
+}
+
 export function updateSong(songBookId, songId, songPayload) {
     return request(getSongUrl(songBookId, songId), {
         method: "PUT",
@@ -64,8 +74,28 @@ export function updateSong(songBookId, songId, songPayload) {
     })
 }
 
-export function deleteSong(songBookId, songId) {
-    return request(getSongUrl(songBookId, songId), {
+export function deleteSong(songBookId, songId, expectedRevision) {
+    const query = expectedRevision === undefined
+        ? "" : `?expectedRevision=${encodeURIComponent(expectedRevision)}`
+    return request(`${getSongUrl(songBookId, songId)}${query}`, {
         method: "DELETE"
+    })
+}
+
+export function getBookHistory(bookId, page = 1, { signal } = {}) {
+    return request(pageUrl(`/songbooks/${requireId(bookId, "Song book id")}/history`, page), { signal })
+}
+
+export function getSongHistory(bookId, songId, page = 1, { signal } = {}) {
+    return request(pageUrl(`${getSongUrl(bookId, songId)}/history`, page), { signal })
+}
+
+export function getSongSnapshot(bookId, songId, revision, { signal } = {}) {
+    return request(`${getSongUrl(bookId, songId)}/history/${requireId(revision, "Revision")}`, { signal })
+}
+
+export function restoreSong(bookId, songId, revision, expectedRevision, { signal } = {}) {
+    return request(`${getSongUrl(bookId, songId)}/history/${requireId(revision, "Revision")}/restore`, {
+        method: "POST", json: { expectedRevision }, signal
     })
 }

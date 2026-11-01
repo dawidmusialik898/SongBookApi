@@ -85,7 +85,7 @@ export function createRouter(ctx) {
 
     function replaceQuery(query = {}) {
         const location = parseLocation(window.location.hash)
-        if (current?.route.name !== "book") {
+        if (!["book", "shared-book"].includes(current?.route.name)) {
             return current?.query ?? {}
         }
 
@@ -192,7 +192,12 @@ export function createRouter(ctx) {
         let screenName = resolved.route.screenName ??
             resolved.route.name
         let screen = resolved.route.render
-        if (ctx.session.state.status === "loading") {
+        if (ctx.auth.forceAuth) {
+            screenName = "auth"
+            screen = renderAuthScreen
+        } else if (resolved.route.publicRead) {
+            // Public capability reads do not depend on the account service.
+        } else if (ctx.session.state.status === "loading") {
             screenName = "loading"
             screen = renderLoadingScreen
         } else if (ctx.session.state.status === "unavailable") {

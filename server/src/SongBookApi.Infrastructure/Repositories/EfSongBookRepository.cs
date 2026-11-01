@@ -5,11 +5,14 @@ using SongBookApi.Domain.Entities;
 using SongBookApi.Domain.Repositories;
 using SongBookApi.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore.Storage;
+using SongBookApi.Domain.Services;
 
 namespace SongBookApi.Infrastructure.Repositories;
 
-public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBookRepository
+public sealed class EfSongBookRepository(SongBookDbContext dbContext, IMutationContext? mutationContext = null,
+    IActivityWriter? activityWriter = null) : ISongBookRepository
 {
+    private IActivityWriter Writer => activityWriter ?? new EfActivityWriter(dbContext, mutationContext ?? new CurrentMutation());
     public async Task<PageResult<AccessibleSongBook>> ListAccessibleAsync(string userId, int page)
         => Paging.FromLookahead(await dbContext.SongBooks
             .AsNoTracking()
@@ -62,6 +65,7 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
     public async Task<SongBook> AddAsync(SongBook songBook)
     {
         dbContext.SongBooks.Add(songBook);
+        Writer.StageActivity(songBook.Id, "book.created", description: songBook.Name);
         await dbContext.SaveChangesAsync();
         return songBook;
     }
@@ -73,9 +77,11 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         DateTimeOffset updatedAtUtc)
     {
         await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
+        string previousName = songBook.Name;
         songBook.Name = name;
         songBook.NormalizedName = normalizedName;
         songBook.UpdatedAtUtc = updatedAtUtc;
+        Writer.StageActivity(songBook.Id, "book.renamed", description: $"{previousName} → {name}");
         await dbContext.SaveChangesAsync();
         await dbContext.SongBooks
             .Where(book => book.Id == songBook.Id)
@@ -114,7 +120,10 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         SongBookAccessLevel accessLevel,
         DateTimeOffset now)
     {
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         SongBookAccess? access = await FindAccessAsync(bookId, userId);
+        string operation = access is null ? "collaborator.added" : "collaborator.changed";
+        string? previousLevel = access?.AccessLevel.ToString();
         if (access is null)
         {
             access = new SongBookAccess
@@ -134,6 +143,8 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
             access.UpdatedAtUtc = now;
         }
 
+        Writer.StageActivity(bookId, operation, ownerOnly: true,
+            description: previousLevel is null ? accessLevel.ToString() : $"{previousLevel} → {accessLevel}", subjectUserId: userId);
         try
         {
             await dbContext.SaveChangesAsync();
@@ -163,11 +174,13 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
             await dbContext.SaveChangesAsync();
         }
 
+        await transaction.CommitAsync();
         return access;
     }
 
     public async Task<bool> RemoveAccessAsync(Guid bookId, Guid accessId)
     {
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync();
         SongBookAccess? access = await dbContext.SongBookAccessEntries.SingleOrDefaultAsync(entry =>
             entry.SongBookId == bookId && entry.Id == accessId);
         if (access is null)
@@ -176,7 +189,9 @@ public sealed class EfSongBookRepository(SongBookDbContext dbContext) : ISongBoo
         }
 
         dbContext.SongBookAccessEntries.Remove(access);
+        Writer.StageActivity(bookId, "collaborator.removed", ownerOnly: true, subjectUserId: access.UserId);
         await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
         return true;
     }
 }

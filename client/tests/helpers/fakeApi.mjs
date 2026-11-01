@@ -1,3 +1,6 @@
+import { createHash, randomBytes } from "node:crypto"
+
+const tokenHash = token => createHash("sha256").update(token).digest("hex")
 const PAGE_SIZE = 50
 const ANTIFORGERY_TOKEN = "test-antiforgery-token"
 const GENERIC_EMAIL_RESPONSE = "If the account is eligible, an email was sent."
@@ -17,6 +20,11 @@ export function createFakeApi() {
     let currentSession = null
 
     const seed = {
+        shareLink(bookId) {
+            const token = randomBytes(32).toString("base64url")
+            requireBook(bookId).shareLink = { hash: tokenHash(token), createdAtUtc: new Date().toISOString() }
+            return token
+        },
         account(email, {
             id,
             password = "Password123!",
@@ -64,7 +72,8 @@ export function createFakeApi() {
                 songs: [],
                 access: [],
                 pdfs: [],
-                contentRevision: 0
+                contentRevision: 0,
+                activities: [], revisions: new Map()
             }
             books.set(book.id, book)
             return book.id
@@ -160,6 +169,35 @@ export function createFakeApi() {
                 .map(segment => decodeURIComponent(segment))
         } catch {
             return problemResponse(400, "The request path is invalid.")
+        }
+
+        if (segments[0] === "shared") {
+            const publicSegments = segments.slice(1)
+            const book = books.get(publicSegments[1])
+            const token = request.headers["x-songbook-share-token"]
+            let response
+            const tail = publicSegments.slice(2)
+            const allowed = tail.length === 0 ||
+                (tail[0] === "songs" && (tail.length === 1 ||
+                    (tail.length === 2 && !["copy", "new"].includes(tail[1])) ||
+                    (tail.length === 3 && tail[2] === "adjacent"))) ||
+                (tail[0] === "pdfs" && (tail.length === 1 ||
+                    (tail.length === 3 && tail[2] === "download")))
+            if (request.method !== "GET" || publicSegments[0] !== "songbooks" || !allowed ||
+                !book?.shareLink || typeof token !== "string" || tokenHash(token) !== book.shareLink.hash) {
+                response = emptyResponse(404)
+            } else {
+                response = tail.length === 0
+                    ? jsonResponse({ id: book.id, name: book.name, songCount: book.songs.length })
+                    : await handleSongBookRequest(request, { sharedBookId: book.id }, publicSegments)
+                if (tail[0] === "songs" && tail.length === 2 && response.ok) {
+                    const { revision, ...song } = await response.json()
+                    response = jsonResponse(song)
+                }
+            }
+            response.headers.set("Cache-Control", "no-store")
+            response.headers.set("Referrer-Policy", "no-referrer")
+            return response
         }
 
         if (!["songbooks", "admin"].includes(segments[0])) {
@@ -282,6 +320,7 @@ export function createFakeApi() {
     }
 
     function getAccessLevel(book, account) {
+        if (account.sharedBookId === book.id) return "reader"
         if (book.owner === account.emailKey) {
             return "admin"
         }
@@ -296,6 +335,106 @@ export function createFakeApi() {
         for (const pdf of book.pdfs) {
             pdf.isOutdated = true
         }
+    }
+
+    function recordActivity(book, account, operation, songId = null, revision = null, ownerOnly = false, description = null, subjectUserId = null) {
+        book.activities.unshift({
+            id: nextId("activity"), songId, revision, operation,
+            occurredAtUtc: new Date().toISOString(), actorId: account?.id ?? null,
+            ownerOnly, description, subjectUserId
+        })
+    }
+
+    function actorName(actorId, operation) {
+        return operation === "baseline" ? "Unknown (tracking baseline)" :
+            [...accounts.values()].find(account => account.id === actorId)?.email ?? "Deleted user"
+    }
+
+    function recordRevision(book, song, account, operation, restoredFromRevision = null) {
+        const revisions = book.revisions.get(song.id) ?? []
+        revisions.unshift({
+            summary: {
+                revision: song.revision, operation, occurredAtUtc: new Date().toISOString(),
+                actorId: account?.id ?? null, restoredFromRevision
+            },
+            snapshot: { schemaVersion: 1, song: JSON.parse(JSON.stringify({
+                ...toSongResponse(song), songBookId: book.id,
+                createdAtUtc: song.createdAtUtc ?? null, updatedAtUtc: song.updatedAtUtc ?? null,
+                parts: song.parts.map((part, position) => ({
+                    ...part, songId: song.id, position,
+                    chords: part.chords.map(chord => ({ ...chord, partId: part.id }))
+                }))
+            })) }
+        })
+        book.revisions.set(song.id, revisions)
+        if (operation !== "baseline") recordActivity(book, account, operation, song.id, song.revision, false, song.title)
+    }
+
+    function baseline(book, song) {
+        if (song.revision === 0) {
+            song.revision = 1
+            recordRevision(book, song, null, "baseline")
+        }
+    }
+
+    function revisionSummary(entry) {
+        const { actorId, ...summary } = entry.summary
+        return { ...summary, actor: actorName(actorId, summary.operation) }
+    }
+
+    function handleHistoryRequest(request, account, book, songId, tail) {
+        const denial = requireBookAccess(book, account, request.method === "POST" ? "editor" : "reader")
+        if (denial !== null) return denial
+        if (!songId && request.method === "GET") {
+            const page = readPageNumber(request)
+            if (page.error) return page.error
+            const owner = getAccessLevel(book, account) === "admin"
+            return pagedResponse(book.activities.filter(entry => owner || !entry.ownerOnly).map(entry => {
+                const { actorId, ownerOnly, subjectUserId, ...summary } = entry
+                return { ...summary, actor: actorName(actorId, entry.operation),
+                    subject: entry.operation.startsWith("collaborator.") ? actorName(subjectUserId, "") : null }
+            }), page.value)
+        }
+        const entries = book.revisions.get(songId) ?? []
+        const song = book.songs.find(song => song.id === songId)
+        const latestRevision = entries[0]?.summary.revision ?? 0
+        if (entries.length === 0 && song === undefined) return emptyResponse(404)
+        if (tail.length === 0 && request.method === "GET") {
+            const page = readPageNumber(request)
+            if (page.error) return page.error
+            return jsonResponse({
+                revisions: { items: entries.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE).map(revisionSummary),
+                    page: page.value, hasNext: entries.length > page.value * PAGE_SIZE },
+                latestRevision, deleted: song === undefined
+            })
+        }
+        const revision = Number(tail[0])
+        if (!Number.isSafeInteger(revision) || revision < 1) return emptyResponse(400)
+        const entry = entries.find(entry => entry.summary.revision === revision)
+        if (entry === undefined) return emptyResponse(404)
+        if (tail.length === 1 && request.method === "GET") return jsonResponse({
+            summary: revisionSummary(entry), snapshot: entry.snapshot
+        })
+        if (tail.length === 2 && tail[1] === "restore" && request.method === "POST") {
+            const csrf = requireAntiforgery(request)
+            if (csrf !== null) return csrf
+            if (!Number.isSafeInteger(request.body?.expectedRevision) || request.body.expectedRevision < 1) return emptyResponse(400)
+            if (request.body.expectedRevision !== latestRevision) return emptyResponse(409)
+            const restored = JSON.parse(JSON.stringify(entry.snapshot.song))
+            if (entry.snapshot.schemaVersion !== 1 || restored.parts.some(part => validateChordList(part.text, part.chords) !== null) ||
+                new Set(restored.parts.map(part => part.id)).size !== restored.parts.length) return emptyResponse(409)
+            if ([...books.values()].some(candidate => candidate.songs.some(other =>
+                (other.id === songId && candidate.id !== book.id) ||
+                (other.id !== songId && other.parts.some(part => restored.parts.some(saved => saved.id === part.id)))))) return emptyResponse(409)
+            restored.revision = latestRevision + 1
+            restored.updatedAtUtc = new Date().toISOString()
+            if (song === undefined) book.songs.push(restored)
+            else book.songs[book.songs.indexOf(song)] = restored
+            recordRevision(book, restored, account, "song.restored", revision)
+            markBookChanged(book)
+            return jsonResponse({ id: songId, revision: restored.revision })
+        }
+        return emptyResponse(404)
     }
 
     async function handleAuthRequest(request) {
@@ -456,9 +595,10 @@ export function createFakeApi() {
                     songs: [],
                     access: [],
                     pdfs: [],
-                    contentRevision: 0
+                    contentRevision: 0, activities: [], revisions: new Map()
                 }
                 books.set(book.id, book)
+                recordActivity(book, account, "book.created", null, null, false, book.name)
                 return jsonResponse(toBookSummary(book, "admin"), 201, {
                     Location: `/songbooks/${encodeURIComponent(book.id)}`
                 })
@@ -469,6 +609,28 @@ export function createFakeApi() {
 
         const book = books.get(segments[1])
         if (book === undefined) {
+            return emptyResponse(404)
+        }
+
+        if (segments.length === 3 && segments[2] === "share-link") {
+            const denial = requireBookAccess(book, account, "admin")
+            if (denial !== null) return denial
+            if (request.method === "GET") return jsonResponse({
+                enabled: Boolean(book.shareLink), createdAtUtc: book.shareLink?.createdAtUtc ?? null
+            }, 200, { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" })
+            if (request.method === "POST") {
+                const operation = book.shareLink ? "link.replaced" : "link.created"
+                const token = seed.shareLink(book.id)
+                recordActivity(book, account, operation, null, null, true)
+                return jsonResponse({ token, createdAtUtc: book.shareLink.createdAtUtc }, 200, {
+                    "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"
+                })
+            }
+            if (request.method === "DELETE") {
+                if (book.shareLink) recordActivity(book, account, "link.revoked", null, null, true)
+                delete book.shareLink
+                return emptyResponse(204)
+            }
             return emptyResponse(404)
         }
 
@@ -507,7 +669,9 @@ export function createFakeApi() {
                 if (duplicate) {
                     return emptyResponse(409)
                 }
+                const previousName = book.name
                 book.name = name.value
+                recordActivity(book, account, "book.renamed", null, null, false, `${previousName} → ${book.name}`)
                 markBookChanged(book)
                 return emptyResponse(204)
             }
@@ -515,6 +679,9 @@ export function createFakeApi() {
             return emptyResponse(404)
         }
 
+        if (segments[2] === "history" && segments.length === 3) {
+            return handleHistoryRequest(request, account, book, null, [])
+        }
         if (segments[2] === "access") {
             return handleBookAccessRequest(request, account, book, segments)
         }
@@ -578,6 +745,8 @@ export function createFakeApi() {
             let member = book.access.find(
                 candidate => candidate.emailKey === emailKey
             )
+            const operation = member === undefined ? "collaborator.added" : "collaborator.changed"
+            const previousLevel = member?.accessLevel
             if (member === undefined) {
                 member = {
                     id: nextId("access"),
@@ -589,6 +758,8 @@ export function createFakeApi() {
             } else {
                 member.accessLevel = request.body.accessLevel
             }
+            recordActivity(book, account, operation, null, null, true,
+                previousLevel == null ? member.accessLevel : `${previousLevel} → ${member.accessLevel}`, memberAccount.id)
             return jsonResponse(toAccessSummary(member))
         }
 
@@ -603,7 +774,8 @@ export function createFakeApi() {
             if (memberIndex === -1) {
                 return emptyResponse(404)
             }
-            book.access.splice(memberIndex, 1)
+            const removed = book.access.splice(memberIndex, 1)[0]
+            recordActivity(book, account, "collaborator.removed", null, null, true, null, accounts.get(removed.emailKey)?.id)
             return emptyResponse(204)
         }
 
@@ -612,6 +784,42 @@ export function createFakeApi() {
 
     function handleSongRequest(request, account, book, segments) {
         const tail = segments.slice(3)
+        if (tail.length === 1 && tail[0] === "copy" && request.method === "POST") {
+            const csrfError = requireAntiforgery(request)
+            if (csrfError !== null) return csrfError
+            const { sourceBookId, sourceSongId } = request.body ?? {}
+            if (typeof sourceBookId !== "string" || !sourceBookId.trim() ||
+                typeof sourceSongId !== "string" || !sourceSongId.trim()) {
+                return validationProblem("sourceSongId", "Source IDs must be nonempty.")
+            }
+            if (sourceBookId === book.id) {
+                return validationProblem("sourceBookId", "Choose a different destination song book.")
+            }
+            const sourceBook = books.get(sourceBookId)
+            if (sourceBook === undefined) return emptyResponse(404)
+            const denial = requireBookAccess(sourceBook, account, "reader") ??
+                requireBookAccess(book, account, "editor")
+            if (denial !== null) return denial
+            const source = sourceBook.songs.find(song => song.id === sourceSongId)
+            if (source === undefined) return emptyResponse(404)
+            const payload = {
+                ...toSongResponse(source),
+                parts: source.parts.map(({ id, ...part }) => ({
+                    ...part, chords: part.chords.map(chord => ({ ...chord }))
+                }))
+            }
+            const created = buildNewSong(payload, nextId)
+            if (created.error !== undefined) return created.error
+            created.song.revision = 1
+            created.song.createdAtUtc = created.song.updatedAtUtc = new Date().toISOString()
+            book.songs.push(created.song)
+            recordRevision(book, created.song, account, "song.copied")
+            markBookChanged(book)
+            return jsonResponse(toSongResponse(created.song), 201, {
+                Location: `/songbooks/${encodeURIComponent(book.id)}/songs/${encodeURIComponent(created.song.id)}`
+            })
+        }
+        if (tail[1] === "history") return handleHistoryRequest(request, account, book, tail[0], tail.slice(2))
         if (tail.length === 0 && request.method === "GET") {
             const denial = requireBookAccess(book, account, "reader")
             if (denial !== null) {
@@ -666,6 +874,9 @@ export function createFakeApi() {
                 return created.error
             }
             book.songs.push(created.song)
+            created.song.revision = 1
+            created.song.createdAtUtc = created.song.updatedAtUtc = new Date().toISOString()
+            recordRevision(book, created.song, account, "song.created")
             markBookChanged(book)
             return jsonResponse(toSongResponse(created.song), 201, {
                 Location: `/songbooks/${encodeURIComponent(book.id)}/songs/${encodeURIComponent(created.song.id)}`
@@ -724,7 +935,15 @@ export function createFakeApi() {
             if (songIndex === -1) {
                 return emptyResponse(404)
             }
+            const existing = book.songs[songIndex]
+            const expected = request.method === "PUT" ? request.body?.expectedRevision :
+                request.query.expectedRevision === undefined ? undefined : Number(request.query.expectedRevision)
+            if (expected != null && (!Number.isSafeInteger(expected) || expected < 0)) return emptyResponse(400)
+            if (expected != null && expected !== existing.revision) return emptyResponse(409)
             if (request.method === "DELETE") {
+                baseline(book, existing)
+                existing.revision++
+                recordRevision(book, existing, account, "song.deleted")
                 book.songs.splice(songIndex, 1)
                 markBookChanged(book)
                 return emptyResponse(204)
@@ -738,6 +957,11 @@ export function createFakeApi() {
             if (updated.error !== undefined) {
                 return updated.error
             }
+            baseline(book, existing)
+            updated.song.revision = existing.revision + 1
+            updated.song.createdAtUtc = existing.createdAtUtc
+            updated.song.updatedAtUtc = new Date().toISOString()
+            recordRevision(book, updated.song, account, "song.updated")
             book.songs[songIndex] = updated.song
             markBookChanged(book)
             return emptyResponse(204)
@@ -779,6 +1003,26 @@ export function createFakeApi() {
                 )
             }
 
+            const options = {
+                fontFamily: request.body.fontFamily ?? "lato",
+                fontSize: request.body.fontSize ?? 10,
+                orientation: request.body.orientation ?? "portrait",
+                columns: request.body.columns ?? 1
+            }
+            if (!["lato", "dejavu-sans-mono"].includes(options.fontFamily)) {
+                return validationProblem("fontFamily", "Choose lato or dejavu-sans-mono.")
+            }
+            if (!Number.isInteger(options.fontSize) || options.fontSize < 8 || options.fontSize > 18) {
+                return validationProblem("fontSize", "Choose an integer font size from 8 to 18.")
+            }
+            if (!["portrait", "landscape"].includes(options.orientation)) {
+                return validationProblem("orientation", "Choose portrait or landscape.")
+            }
+            if (!Number.isInteger(options.columns) || options.columns < 1 ||
+                options.columns > (options.orientation === "landscape" ? 3 : 2)) {
+                return validationProblem("columns", "Choose 1-2 columns for portrait or 1-3 for landscape.")
+            }
+
             const songIds = request.body.songIds
             let selectedSongs = []
             let isWholeBook = songIds === undefined || songIds === null
@@ -810,6 +1054,7 @@ export function createFakeApi() {
 
             const pdf = {
                 id: nextId("pdf"),
+                ...options,
                 includeChords: request.body.includeChords,
                 isWholeBook,
                 songCount: isWholeBook
@@ -820,6 +1065,7 @@ export function createFakeApi() {
                 isOutdated: false
             }
             book.pdfs.unshift(pdf)
+            recordActivity(book, account, "pdf.generated")
             return jsonResponse(toPdfSummary(pdf), 201, {
                 Location: `/songbooks/${encodeURIComponent(book.id)}/pdfs/${encodeURIComponent(pdf.id)}/download`
             })
@@ -1000,6 +1246,9 @@ export function createFakeApi() {
         if (segments.length === 3 && segments[2] === "access") {
             return request.method === "PUT"
         }
+        if (segments.length === 3 && segments[2] === "share-link") {
+            return request.method === "POST" || request.method === "DELETE"
+        }
         if (segments.length === 4 && segments[2] === "access") {
             return request.method === "DELETE"
         }
@@ -1008,6 +1257,9 @@ export function createFakeApi() {
         }
         if (segments.length === 4 && segments[2] === "songs") {
             return request.method === "PUT" || request.method === "DELETE"
+        }
+        if (segments.length === 7 && segments[2] === "songs" && segments[4] === "history" && segments[6] === "restore") {
+            return request.method === "POST"
         }
         if (segments.length === 3 && segments[2] === "pdfs") {
             return request.method === "POST"
@@ -1129,6 +1381,7 @@ function normalizeInterceptResponse(value) {
 function buildSeedSong(payload, id, nextId) {
     return {
         id,
+        revision: payload.revision ?? 0,
         title: payload.title ?? null,
         author: payload.author ?? null,
         originalTitle: payload.originalTitle ?? null,
@@ -1365,6 +1618,10 @@ function makePdfMetadata(book, options, nextId) {
 
     return {
         id: options.id ?? nextId("pdf"),
+        fontFamily: options.fontFamily ?? "lato",
+        fontSize: options.fontSize ?? 10,
+        orientation: options.orientation ?? "portrait",
+        columns: options.columns ?? 1,
         includeChords: Boolean(options.includeChords),
         isWholeBook,
         songCount: options.songCount ?? (
@@ -1415,6 +1672,7 @@ function toPdfSelectedSong(song) {
 function toSongResponse(song) {
     return {
         id: song.id,
+        revision: song.revision ?? 0,
         title: song.title,
         author: song.author,
         originalTitle: song.originalTitle,
@@ -1436,6 +1694,10 @@ function toSongResponse(song) {
 function toPdfSummary(pdf) {
     return {
         id: pdf.id,
+        fontFamily: pdf.fontFamily,
+        fontSize: pdf.fontSize,
+        orientation: pdf.orientation,
+        columns: pdf.columns,
         includeChords: pdf.includeChords,
         isWholeBook: pdf.isWholeBook,
         songCount: pdf.songCount,
